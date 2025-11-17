@@ -10,7 +10,9 @@ communication modules**:
 A 2.13" e-ink display shows current air quality and device status, and can be safely omitted in
 long-life, headless deployments.
 
+![LocuSense node with e-ink display](docs/images/locusense_hw.jpg)
 ---
+
 
 ## Features
 
@@ -71,11 +73,8 @@ the configured communication mode and drives either **LoRaWAN** or **Matter**.
   - Small partial refreshes for state line and VOC updates
   - This minimizes e-ink wear and **saves power**, not just network traffic
 
-```text
-docs/img/device_front.jpg
-```
 
-![LocuSense node with e-ink display](docs/img/device_front.jpg)
+![LocuSense e-ink display](docs/images/locusense_emogi.jpg)
 
 ### Home Assistant integration
 
@@ -86,12 +85,6 @@ docs/img/device_front.jpg
   - **Matter over Thread (ESP32-C6)** – native Matter device
   - **LoRaWAN via TTN → MQTT → Node-RED → Home Assistant** – for large building deployments
 
-```text
-docs/img/ha_dashboard.png
-```
-
-![Home Assistant dashboard with LocuSense entities](docs/img/ha_dashboard.png)
-
 ### Data storage & analytics
 
 - Example stack:
@@ -99,11 +92,8 @@ docs/img/ha_dashboard.png
   - **Grafana** dashboards for CO₂ / T / RH / VOC trends
 - Sample dashboard JSON is provided.
 
-```text
-docs/img/grafana_dashboard.png
-```
 
-![Grafana dashboard example](docs/img/grafana_dashboard.png)
+![Grafana dashboard example](docs/images/dashboard_nest.png)
 
 ---
 
@@ -210,12 +200,6 @@ Suggested layout for this repository:
 │
 └─ README.md
 ```
-
-```text
-docs/img/node_red_flow.png
-```
-
-![Example Node-RED / TTN flow](docs/img/node_red_flow.png)
 
 ---
 
@@ -424,7 +408,7 @@ Pairing workflow:
 docs/img/ha_matter_pairing.png
 ```
 
-![Matter pairing and e-ink QR](docs/img/ha_matter_pairing.png)
+![Matter pairing and e-ink QR](docs/images/matter_qr.png)
 
 ### Google Nest Hub
 
