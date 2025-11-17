@@ -74,7 +74,7 @@ the configured communication mode and drives either **LoRaWAN** or **Matter**.
   - This minimizes e-ink wear and **saves power**, not just network traffic
 
 
-![LocuSense e-ink display](docs/images/locusense_emogi.jpg)
+![LocuSense e-ink display](docs/images/locusense_emogi.png)
 
 ### Home Assistant integration
 
@@ -93,7 +93,7 @@ the configured communication mode and drives either **LoRaWAN** or **Matter**.
 - Sample dashboard JSON is provided.
 
 
-![Grafana dashboard example](docs/images/dashboard_nest.png)
+![Grafana dashboard example](docs/images/dashboard_nest.jpg)
 
 ---
 
