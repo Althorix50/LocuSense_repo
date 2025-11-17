@@ -4,7 +4,7 @@ Open-source firmware for the LocuSense air-quality node built around an STM32U07
 The code measures CO2/temperature/humidity/VOC with Sensirion sensors, renders the
 data on a 2.13" e-paper display, pushes a compact 6-byte payload over LoRaWAN or
 Matter/Thread (via ESP32-C6), and turns power rails on/off aggressively to maximize
-runtime from the Li-ion + LSOC-L2 hybrid battery pack.
+runtime from the Li-Ion + LiSOCl₂ hybrid battery pack.
 
 ## Key Features
 - **Single state machine** in `Core/Src/app.c` drives measurements, communications,
@@ -53,7 +53,7 @@ runtime from the Li-ion + LSOC-L2 hybrid battery pack.
   (PULL_CNTR). CO2 recalibration is performed inside `STATE_RECALIBRATION`.
 - **BQ25185** charger monitors USB presence (`USB_ON` pin) and charger status.
   See `Core/Src/BQ25185.c` for helper functions used by GUI and telemetry.
-+- **External EEPROM M24C02** stores `AppConfig_t`, `WioOtaaConfig_t`, and
+- **External EEPROM M24C02** stores `AppConfig_t`, `WioOtaaConfig_t`, and
   `EspC6Pairing_t`.
 - **GPIO essentials**: LED (PB10), user button (PB11, EXTI4_15), PSx power-switch
   pins defined in `main.h`.

@@ -7,8 +7,8 @@ communication modules**:
 - **LoRaWAN (Wio-E5)** – long-range, ultra-low-power operation (few µA sleep current)
 - **ESP32-C6 (Matter over Thread)** – fully integrated with Home Assistant as a sleepy end device (SED)
 
-A 2.13" e-ink display shows current air quality and device status, and can be safely omitted in
-long-life, headless deployments.
+A 2.13" e-ink display shows current air quality and device status. It can be safely omitted in
+long-life, headless deployments where every µA matters.
 
 ![LocuSense node with e-ink display](docs/images/locusense_hw.jpg)
 ---
@@ -55,8 +55,9 @@ long-life, headless deployments.
     - **Power Source cluster** for USB, Li-Ion, LiSOCl₂
   - Text-based UART protocol between STM32 and ESP32-C6 (DATA / STATUS / COMM / QR …)
 
-Only one of these modules is populated and connected to the RF connector; firmware detects
-the configured communication mode and drives either **LoRaWAN** or **Matter**.
+Only one of these modules is populated and connected to the RF connector; firmware detects the
+configured communication mode and drives either **LoRaWAN** or **Matter** with no code changes
+on your side.
 
 ### Local UI – e-ink display
 
@@ -116,8 +117,8 @@ LocuSense is intentionally designed for two main scenarios:
   - `tx_min_interval_sec  = 3600` (one update per measurement)
   - `tx_max_interval_sec  = 21600` (heartbeat every 6 h)
 
-These settings are tuned for **multi-year battery life** on LiSOCl₂ while still providing
-useful CO₂ / comfort trends.
+These settings are tuned for **multi-year battery life** on LiSOCl₂ while still providing useful
+CO₂ and comfort trends.
 
 ### 2. Personal air-quality monitor (Matter + Li-Ion + e-ink)
 
@@ -134,72 +135,42 @@ useful CO₂ / comfort trends.
   - `tx_min_interval_sec  = 900` (one update per measurement)
   - `tx_max_interval_sec  = 3600` (heartbeat every hour)
 
-Even in this “personal gadget” mode the device still aims to be **low-power**; it does
-**not** need to be permanently powered via USB. USB is mainly for charging and for
-continuous VOC measurement if desired.
+Even in this “personal gadget” mode the device still aims to be **low-power**. It does **not**
+need to be permanently powered via USB—USB is mainly for charging and optional continuous VOC
+sampling.
+
+---
+
+## Getting started
+
+1. Decide which RF module you will populate (Wio-E5 for LoRaWAN, ESP32-C6 for Matter).
+2. Provision the matching firmware and configuration:
+   - LoRaWAN: flash the STM32 image, set OTAA keys via the UART console, and pair with TTN.
+   - Matter: flash the STM32 image plus the ESP32-C6 image, then commission the Matter device
+     using the QR/manual codes.
+3. Adjust measurement and transmission intervals in CONFIG mode to fit your deployment (see the
+   [typical use cases](#typical-use-cases)).
+4. Confirm data flow in your backend (MQTT/Node-RED/Home Assistant or Matter controller) before
+   sealing the enclosure.
 
 ---
 
 ## Repository structure
 
-Suggested layout for this repository:
+Current top-level layout:
 
 ```text
 .
-├─ firmware/
-│  ├─ stm32/
-│  │  ├─ Core/
-│  │  ├─ Drivers/
-│  │  ├─ app/
-│  │  │  ├─ app.c
-│  │  │  ├─ gui/
-│  │  │  │  ├─ GUI.c
-│  │  │  │  └─ images.h / bitmaps
-│  │  │  ├─ conf_console.c
-│  │  │  ├─ wioe5/        # LoRaWAN driver & helpers
-│  │  │  ├─ esp32c6/      # UART text protocol helpers
-│  │  │  ├─ ee_config/    # M24C02 config load/save
-│  │  │  └─ ...
-│  │  └─ ...
-│  └─ esp32c6/
-│     ├─ main/
-│     │  ├─ app_main.cpp  # Matter + UART text protocol
-│     │  └─ CMakeLists.txt
-│     └─ sdkconfig.default
-│
-├─ hardware/
-│  ├─ altium/
-│  │  ├─ LocuSense_PCB.PrjPcb
-│  │  ├─ schematics/
-│  │  └─ pcb/
-│  └─ modules/
-│     ├─ wioe5/           # RF footprint / app note links
-│     └─ esp32c6/
-│
-├─ home-assistant/
-│  ├─ matter/
-│  │  ├─ dashboard_locusense.yaml
-│  │  └─ helpers.md       # notes on HA Green + SkyConnect setup
-│  ├─ lora_ttn/
-│  │  ├─ ttn_payload_decoder.js
-│  │  ├─ node_red_flow.json
-│  │  └─ ha_sensors_mqtt.yaml
-│  └─ influxdb_grafana/
-│     ├─ influxdb_config.md
-│     └─ grafana_dashboard.json
-│
 ├─ docs/
-│  ├─ img/
-│  │  ├─ device_front.jpg
-│  │  ├─ ha_dashboard.png
-│  │  ├─ grafana_dashboard.png
-│  │  └─ node_red_flow.png
-│  └─ diagrams/
-│     ├─ architecture.png
-│     └─ power_domains.png
-│
+│  └─ images/            # Photos and screenshots used in the README
+├─ firmware/
+│  ├─ esp32c6/           # ESP-Matter (Thread) bridge
+│  └─ stm32/             # STM32U0 application, GUI, and drivers
 └─ README.md
 ```
+
+Each firmware directory also ships with its own README that dives into the UART protocol,
+state machine, and build/flash steps.
 
 ---
 
@@ -273,7 +244,8 @@ Basic commands (non-exhaustive):
 - `WIO JOIN` – perform an immediate OTAA join
 - `WIO SEND HEX <12hex>` / `WIO SENDU HEX <12hex>` – confirmed / unconfirmed uplink
 - `WIO SEND KV T=<i16> RH=<u16> CO2=<u16>` – build a 6-byte payload from values and send
-- `WIO TIME` – request current UNIX time over LoRaWAN. A TTN + Node‑RED flow decodes the uplink and returns a 4‑byte timestamp which is then written into the STM32 RTC.
+- `WIO TIME` – request current UNIX time over LoRaWAN. A TTN + Node‑RED flow decodes the
+  uplink and returns a 4‑byte timestamp which is then written into the STM32 RTC.
 
 ### ESP32-C6 / Matter-related console commands
 
@@ -379,9 +351,13 @@ For LoRa deployments, the node talks to a **Wio-E5** module using a simple AT-st
   3. A **Node-RED** flow (provided) decodes the 6-byte payload into CO₂ / T / RH values.
   4. Node-RED publishes these as **Home Assistant MQTT sensors** (via discovery or HA add-on).
 
-Additionally, a small TTN + Node-RED helper flow is used for **time synchronisation**: the node sends a dedicated uplink, Node-RED calculates the current UNIX timestamp and returns it as a 4‑byte downlink payload. The firmware parses this frame and updates the STM32 RTC so logged samples carry a real wall‑clock time.
+Additionally, a small TTN + Node-RED helper flow is used for **time synchronisation**: the
+node sends a dedicated uplink, Node-RED calculates the current UNIX timestamp and returns
+it as a 4‑byte downlink payload. The firmware parses this frame and updates the STM32 RTC
+so logged samples carry a real wall‑clock time.
 
-An example Node-RED flow and TTN payload decoder are included in [`/node-red/`](node-red/) and [`/home-assistant/lora_ttn`](home-assistant/lora_ttn).
+An example Node-RED flow and TTN payload decoder are included in [`/node-red/`](node-red/)
+and [`/home-assistant/lora_ttn`](home-assistant/lora_ttn).
 
 
 ---
@@ -403,10 +379,6 @@ Pairing workflow:
    The device prints the **QR and manual pairing code** and also draws the QR on the e-ink display.
 2. In Home Assistant, add a new **Matter** device and scan the QR code.
 3. After commissioning, all sensors appear in HA; you can then import the example dashboard.
-
-```text
-docs/img/ha_matter_pairing.png
-```
 
 ![Matter pairing and e-ink QR](docs/images/matter_qr.png)
 

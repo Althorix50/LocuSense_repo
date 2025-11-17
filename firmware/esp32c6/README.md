@@ -3,10 +3,12 @@ Matter Multi-Sensor (UART)
 
 Matter over Thread application for an ESP32-C6 Sleepy End Device (SED) that acts as a bridge for an external STM32-based sensor head. The ESP32 exposes three environmental sensors (temperature, humidity, CO₂) plus three Matter Power Source endpoints while the STM32 pushes measurements over a simple ASCII UART protocol.
 
+The design goal is reliability with minimal wake time: the ESP32 sleeps between Thread polls, wakes instantly on `WAKE`, and mirrors STM32 telemetry to Matter clusters without additional parsing on the controller side.
+
 Key features
 ------------
 - ESP-Matter based Matter-over-Thread SED with commissioning helpers (QR/manual codes sent over UART).
-- Low-speed UART (9600 Bd) plus WAKE/READY GPIO handshake so the STM32 can wake the ESP32 from light sleep when a frame is ready.
+- Low-speed UART (9600 Bd) plus WAKE/READY GPIO handshake so the STM32 can wake the ESP32 from light sleep when a frame is ready to send.
 - Environmental telemetry comes from the STM32 (`DATA ...` frames) and is mapped to Matter Temperature Measurement, Relative Humidity Measurement, Air Quality, and the custom Concentration Measurement cluster (CO₂).
 - Rich power-source modelling: independent endpoints for USB (wired), Li-Ion (rechargeable), and LiSOCl₂ (primary cell) including voltage, presence and charge/replace status derived from telemetry.
 - UART command channel allows the STM32 to control commissioning (`COMM START/STOP`), factory reset, QR/manual code retrieval, and to query fabrics or runtime status.
@@ -23,6 +25,12 @@ Hardware & wiring
   - `WAKE` (`GPIO2`, input, RTC capable). Driven HIGH by the STM32 to signal that a frame is ready and to wake the ESP32 from light sleep.
   - `READY` (`GPIO3`, output). Raised by the ESP32 once it is ready to read a frame; the STM32 should only transmit while `READY=1`.
 - **Power meta telemetry**: The STM32 reports Li-Ion, LiSOCl₂ and USB state (voltages, charger state) through `DATA BAT ...` lines. Those values are forwarded to the relevant Matter Power Source clusters.
+
+Prerequisites
+-------------
+- ESP-IDF with esp-matter support (v5.2 or v5.3 are known-good).
+- A serial/JTAG adapter wired to `UART1` pins and access to the WAKE/READY GPIOs.
+- A Thread border router in your test environment (Home Assistant + SkyConnect works well).
 
 Thread SED & light-sleep behavior
 ---------------------------------
