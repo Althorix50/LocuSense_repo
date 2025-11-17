@@ -106,7 +106,7 @@ LocuSense is intentionally designed for two main scenarios:
 - Application: schools, offices, public buildings, multi-room deployments
 - Recommended configuration:
   - **Battery:** LiSOCl₂ primary cell
-  - **Radio:** Wio-E5 (LoRaWAN → TTN → MQTT → Node-RED → Home Assistant)
+  - **Radio:** Wio-E5 (LoRaWAN → TTN → MQTT → ...)
   - **Display:** e-ink optionally **not populated** (headless sensors in classrooms, corridors)
   - **VOC:** disabled to minimize current consumption
 - Example timing:
