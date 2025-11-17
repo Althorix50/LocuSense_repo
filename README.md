@@ -1,348 +1,470 @@
-# LocuSense – Low-Power CO₂ / T / RH / VOC Sensor Node
+# LocuSense – Low-Power CO₂ / T / RH / VOC Node (LoRaWAN / Matter over Thread)
 
-LocuSense is a **battery-powered environmental sensor node** designed for ultra-low power operation.  
-It measures:
+LocuSense is a **battery-powered environmental sensing node** for CO₂, temperature, humidity and VOC index.
+It is built around an ultra-low-power **STM32U0** MCU and can be equipped with **one of two mutually exclusive
+communication modules**:
 
-- CO₂ (SCD41)  
-- Temperature & humidity (SHT41)  
-- VOC index (SGP40 + Sensirion VOC algorithm, optional / USB mode)
+- **LoRaWAN (Wio-E5)** – long-range, ultra-low-power operation (few µA sleep current)
+- **ESP32-C6 (Matter over Thread)** – fully integrated with Home Assistant as a sleepy end device (SED)
 
-and can communicate either via:
-
-- **LoRaWAN (Wio-E5)** – confirmed uplinks with change/heartbeat policy  
-- **Matter over Thread (ESP32-C6)** – Sleepy End Device, fully integrated with Home Assistant
-
-The node includes a **2.13" e-ink display** for local status and is optimized for **very long runtime** from a primary **Li-SOCl₂** cell, with optional **Li-Ion + USB charging**.
+A 2.13" e-ink display shows current air quality and device status, and can be safely omitted in
+long-life, headless deployments.
 
 ---
 
 ## Features
 
-### Hardware
+### Sensing
 
-- **MCU:** STM32U0 (ultra-low power)
-- **Sensors:**
-  - SCD41 – CO₂ + T + RH (CO₂+TRH mode)
-  - SHT41 – T + RH (TRH-only mode)
-  - SGP40 – VOC raw + VOC index (Sensirion gas index algorithm)
-- **Power:**
-  - Primary: Li-SOCl₂ cell (long lifetime)
-  - Secondary: Li-Ion (1S) with **BQ25185** charger
-  - USB (5 V) as power & Li-Ion charging source
-  - Separate power switches for:
-    - Sensors rail (PS1)
-    - RF rail (PS2)
-    - E-ink display rail (PS4)
-  - Switchable pull-ups, voltage dividers etc. for minimum sleep current
-- **Display:**
-  - 2.13" e-ink (EPD_2in13_V4, 250×122)
-  - Local UI: CO₂ / T / RH / VOC, battery, USB, sleep interval, LoRa/Matter status, emoji air quality indicator
-- **Connectivity:**
-  - Wio-E5 (LoRaWAN, AT commands over UART)
-  - ESP32-C6 (Matter over Thread, UART text protocol with WAKE / READY handshake)
+- **CO₂** – Sensirion **SCD41**
+- **Temperature & humidity** – Sensirion **SHT41**
+- **VOC index** – Sensirion **SGP40** with official Gas Index Algorithm (VOC index)
+- On-board RTC with optional **LoRaWAN time synchronisation** (TTN + Node-RED flow) for time-stamped samples
 
-### Power & Sleep
+### Power & batteries
 
-- **LoRaWAN mode (Wio-E5):**  
-  - STOP2 sleep with radio in low-power mode  
-  - Typical sleep current ≈ **4 µA**
-- **Matter over Thread mode (ESP32-C6 SED):**
-  - Sleepy End Device with light sleep on ESP side  
-  - Average current ≈ **4 mA** (Thread always-on)
-- All peripherals can be completely powered down:
-  - Sensor rail
-  - RF rail
-  - E-ink rail
-  - I²C pull-ups, battery dividers, etc.
+- **STM32U0** ultra-low-power MCU
+- Designed for **very low standby current** (few µA in LoRa STOP2 mode):
+  - Switchable sensor / RF / e-ink power rails
+  - Switchable pull-ups and resistor dividers
+  - Deep sleep of external radios (Wio-E5 sleep, ESP32-C6 SED + light sleep)
+- Dual battery support:
+  - **LiSOCl₂ primary cell** for **multi-year, maintenance-free deployments**
+  - **Li-Ion** secondary cell with **USB-C charging** via **BQ25185**
+- Both batteries are measured via ADC and reported to the GUI and (for ESP32-C6) via
+  **Matter Power Source cluster** (USB + Li-Ion + LiSOCl₂ endpoints).
 
----
+> **Note:** The design does **not enforce a single “primary” source**. Which battery you use depends
+> on your application profile (see [Typical use cases](#typical-use-cases)).
 
-## Firmware Overview
+### Communication (choose one module per board)
 
-The repository contains **two firmware projects** plus hardware design and Home Assistant configuration:
+The PCB is designed to host **exactly one** RF module at a time:
 
-- `firmware/stm32/` – STM32U0 main application
-- `firmware/esp32c6/` – ESP32-C6 Matter over Thread application
-- `hardware/altium/` – Altium Designer project (baseboard + RF modules)
-- `home-assistant/` – Home Assistant, InfluxDB and Grafana configuration / examples
+- **LoRaWAN module – Seeed Wio-E5**
+  - Configurable OTAA keys (AppEUI, DevEUI, AppKey, ADR flag)
+  - Integration with **The Things Network (TTN)**
+  - 6-byte payload: **T(0.01°C), RH(0.01%), CO₂ ppm**
+  - Example **MQTT → Node-RED → Home Assistant** flow provided
+- **ESP32-C6 module – Matter over Thread**
+  - Thread sleepy end device (SED)
+  - Exposes:
+    - **TemperatureMeasurement cluster**
+    - **RelativeHumidityMeasurement cluster**
+    - **AirQuality cluster** (mapped from CO₂)
+    - **Custom CO₂ concentration cluster** (0x040D, MEA feature)
+    - **Power Source cluster** for USB, Li-Ion, LiSOCl₂
+  - Text-based UART protocol between STM32 and ESP32-C6 (DATA / STATUS / COMM / QR …)
 
-### STM32U0 Application
+Only one of these modules is populated and connected to the RF power rail; firmware detects
+the configured communication mode and drives either **LoRaWAN** or **Matter**.
 
-Main file: `app.c`
+### Local UI – e-ink display
 
-**Key responsibilities:**
+- 2.13" e-ink (Waveshare / Good Display, `EPD_2in13_V4`)
+- Shows:
+  - CO₂ (ppm) + compact gauge with thresholds (800 / 1200 ppm)
+  - Temperature and RH with tiny trend arrows
+  - VOC index (when USB + VOC mode are enabled)
+  - Connection state (LoRa or Matter)
+  - Battery voltages (LiSOCl₂, Li-Ion), USB and charger status
+  - Current sleep interval
+- Uses **change-based refresh policy**:
+  - Full redraw only when a **significant change** occurs
+  - Small partial refreshes for state line and VOC updates
+  - This minimizes e-ink wear and **saves power**, not just network traffic
 
-- System state machine:
-  - `STATE_INIT` – cold boot, config load, radio init
-  - `STATE_MEASURE` – sensor measurements (CO₂/T/RH or T/RH only)
-  - `STATE_BAT_MEASURE` – battery + VDDA measurement via ADC
-  - `STATE_SEND_DATA` – send payload via LoRa or ESP
-  - `STATE_RECOVER` – LoRa rejoin / ESP HW reset & status
-  - `STATE_TIME_REQ` – LoRa time sync (port 8) via WioE5
-  - `STATE_GUI` – full screen e-ink redraw (change-based)
-  - `STATE_SLEEP` – STOP2 sleep / VOC idle loop
-  - `STATE_RECALIBRATION` – SCD41 forced recalibration to 400 ppm
-  - `STATE_CONFIG` – UART configuration console
-- Payload format (6 bytes):
-  - T in 0.01 °C (signed)  
-  - RH in 0.01 %RH  
-  - CO₂ in ppm  
-  ```
-  [0..1] = temperature_01C
-  [2..3] = humidity_01pct
-  [4..5] = co2_ppm
-  ```
-- **TX policy** (used for both LoRa & Matter):
-  - First measurement → always send
-  - Then: respect `tx_min_interval_sec`
-  - Heartbeat after `tx_max_interval_sec`
-  - Or immediate send when thresholds exceeded:
-    - `th_temp_01C`
-    - `th_rh_01pct`
-    - `th_co2_ppm`
-- **Battery measurement:**
-  - Internal VREF calibration
-  - Two ADC channels (Li-Ion, Li-SOCl₂) with common divider
-  - Results in mV stored in `app.vbat_liion_mV` and `app.vbat_lsocl2_mV`
-  - Optional sending to ESP as `DATA BAT KV ...` frame
-- **VOC handling:**
-  - VOC mode (`vocMode`):
-    - `VOC_DISABLED`
-    - `VOC_CONT_USB` – continuous VOC sampling while USB is connected
-  - Uses LPTIM2 with 10 s tick
-  - SGP40 raw readings processed by `sensirion_gas_index_algorithm`
-  - VOC index and timestamp shown on e-ink, optional partial updates only
+```text
+docs/img/device_front.jpg
+```
 
-### UART Text Protocol (STM32 ↔ ESP32-C6)
+![LocuSense node with e-ink display](docs/img/device_front.jpg)
 
-Communication is done via **simple text frames over UART1** with a **hardware handshake**:
+### Home Assistant integration
 
-- STM32 drives `WAKE` (to ESP) and reads `READY`
-- ESP drives `READY` (to STM32) and reads `WAKE`
-- Protocol examples:
-  - Environmental data:
-    - `DATA HEX AABBCCDDEEFF`
-    - `DATA KV T=<i16_01C> RH=<u16_01pct> CO2=<u16_ppm>`
-  - Battery / power sources:
-    - `DATA BAT KV LI=<mV> LS=<mV> USB=<0|1> CHG=<0..6>`
-  - Commands from STM32 to ESP:
-    - `PING`
-    - `STATUS?`
-    - `QR?` / `GET QR`
-    - `VERSION?`
-    - `FABRICS?`
-    - `COMM START` / `COMM STOP`
-    - `FACTORYRESET`
+- **Home Assistant Green + SkyConnect configured for Thread** (used in development)
+  - LocuSense appears as a Matter device with multiple sensors and power sources
+  - Ready-to-use HA dashboard configuration included
+- Data flow options:
+  - **Matter over Thread (ESP32-C6)** – native Matter device
+  - **LoRaWAN via TTN → MQTT → Node-RED → Home Assistant** – for large building deployments
 
-The ESP replies with newline-terminated text (`STATUS ONLINE`, `COMM STATE ...`, QR & manual code strings, etc.).
+```text
+docs/img/ha_dashboard.png
+```
 
-### ESP32-C6 Matter Application
+![Home Assistant dashboard with LocuSense entities](docs/img/ha_dashboard.png)
 
-Main file: `app_main()` in `esp32c6` project.
+### Data storage & analytics
 
-**Key points:**
+- Example stack:
+  - **InfluxDB** for time-series storage
+  - **Grafana** dashboards for CO₂ / T / RH / VOC trends
+- Sample dashboard JSON is provided.
 
-- Uses **esp-matter** + **Thread SED** configuration
-- Creates the following endpoints:
+```text
+docs/img/grafana_dashboard.png
+```
 
-1. **Temperature sensor** (TemperatureMeasurement cluster)
-2. **Humidity sensor** (RelativeHumidityMeasurement cluster)
-3. **CO₂ / Air Quality sensor**
-   - AirQuality cluster (0x005B): AirQuality enum derived from CO₂
-   - Custom CO₂ concentration cluster (0x040D) with MEA feature:
-     - MeasuredValue (float, ppm)
-     - Min/MaxMeasuredValue
-     - Uncertainty
-     - MeasurementUnit (ppm)
-     - MeasurementMedium (air)
-4. **Power Source endpoints:**
-   - USB (wired power)
-   - Li-Ion battery
-   - Li-SOCl₂ battery
-
-- Receives `DATA ...` frames from STM32 and updates Matter attributes accordingly
-- Implements **commissioning over UART commands**:
-  - `COMM START` → opens commissioning window, prints QR + manual code
-  - `COMM STOP` → closes window
-  - `FABRICS?` → lists fabrics
-  - Fabric removal and factory reset through Matter / internal helpers
-
-- Generates Matter **QR code** and **manual code** on the ESP side and sends them to STM32:
-  - STM32 draws QR on e-ink display (via `GUI_DrawQR_TextFull()`)
+![Grafana dashboard example](docs/img/grafana_dashboard.png)
 
 ---
 
-## Configuration Console (STM32, UART4)
+## Typical use cases
 
-The node exposes a **minimal CLI** over UART4 for all configuration, including LoRa credentials and ESP pairing info.  
+LocuSense is intentionally designed for two main scenarios:
 
-Enter CONFIG mode by long-pressing the button (or via firmware). The console supports:
+### 1. Long-term building monitoring (LoRaWAN + LiSOCl₂)
 
-- General:
-  - `HELP` – print help
-  - `SHOW` – print current config + Wio-E5 keys + ESP status/QR
-  - `SET <key> <value>` – set AppConfig fields (intervals, thresholds, modes)
-  - `RESET` – restore firmware defaults (AppConfig only, LoRa/ESP data unchanged)
-  - `SAVE` – store AppConfig + Wio OTAA + ESP pairing (QR/manual) to EEPROM
-  - `EXIT` – leave config mode
-- LoRa / Wio-E5:
-  - `WIO SHOW`
-  - `WIO SET APP_EUI <16hex>`
-  - `WIO SET DEV_EUI <16hex>`
-  - `WIO SET APP_KEY <32hex>`
-  - `WIO SET ADR <0|1>`
-  - `WIO JOIN`
-  - `WIO SEND HEX ... / KV ...`
-  - `WIO TIME` – network time via downlink
-- ESP32-C6:
-  - `ESP PING`
-  - `ESP STATUS`
-  - `ESP VERSION`
-  - `ESP QR`
-  - `ESP FABRICS`
-  - `ESP FACTORYRESET`
-  - `ESP COMM START` / `ESP COMM STOP`
-  - `ESP SEND HEX ... / KV ...`
+- Application: schools, offices, public buildings, multi-room deployments
+- Recommended configuration:
+  - **Battery:** LiSOCl₂ primary cell
+  - **Radio:** Wio-E5 (LoRaWAN → TTN → MQTT → Node-RED → Home Assistant)
+  - **Display:** e-ink optionally **not populated** (headless sensors in classrooms, corridors)
+  - **VOC:** disabled to minimize current consumption
+- Example timing:
+  - `measure_mode = CO₂+T+RH`
+  - `interval_measure_sec = 3600` (measure **once per hour**)
+  - `interval_sleep_sec   = 3600` (sleep until next cycle)
+  - `tx_min_interval_sec  = 3600` (one update per measurement)
+  - `tx_max_interval_sec  = 21600` (heartbeat every 6 h)
 
-The console is idle-timeout protected (default 10 min inactivity → auto exit).
+These settings are tuned for **multi-year battery life** on LiSOCl₂ while still providing
+useful CO₂ / comfort trends.
 
----
+### 2. Personal air-quality monitor (Matter + Li-Ion + e-ink)
 
-## E-Ink UI
+- Application: desks, home office, bedrooms, meeting rooms
+- Recommended configuration:
+  - **Battery:** Li-Ion (rechargeable) + occasional USB-C top-up
+  - **Radio:** ESP32-C6, Matter over Thread, paired to Home Assistant
+  - **Display:** e-ink populated, always showing the current status
+  - **VOC:** continuous VOC index when USB is present
+- Example timing:
+  - `measure_mode = CO₂+T+RH`
+  - `interval_measure_sec = 900` (measure every **15 minutes**)
+  - `interval_sleep_sec   = 900`
+  - `tx_min_interval_sec  = 900` (one update per measurement)
+  - `tx_max_interval_sec  = 3600` (heartbeat every hour)
 
-The GUI is implemented in `GUI.c`:
-
-- **Main screen** (full refresh):
-  - CO₂, temperature, humidity, VOC index
-  - Trend arrows (up/down/flat) per parameter
-  - Air quality emoji (happy / neutral / sad / dead) based on CO₂+T
-  - CO₂ mini gauge with thresholds (800 / 1200 ppm)
-  - Bottom bar with:
-    - Li-SOCl₂ voltage / presence
-    - Li-Ion voltage / presence
-    - USB state & charger status
-    - Sleep interval formatted (`xh ym`, etc.)
-- **Partial updates:**
-  - State line (`STATE: MEASURE`, `STATE: SLEEP`, …)
-  - VOC line (just VOC + timestamp)
-  - Config-mode status strip (`SET key=val : OK/ERR`)
-  - QR full-screen render for Matter commissioning
-
-GUI refresh is **change-based** (thresholds aligned with TX policy) to avoid unnecessary e-ink wear and power usage.
+Even in this “personal gadget” mode the device still aims to be **low-power**; it does
+**not** need to be permanently powered via USB. USB is mainly for charging and for
+continuous VOC measurement if desired.
 
 ---
 
-## Home Assistant & Data Pipeline
+## Repository structure
 
-In **Matter mode (ESP32-C6)** the device appears in Home Assistant as:
-
-- Temperature sensor
-- Humidity sensor
-- CO₂ / air quality sensor
-- Power source entities (USB, Li-Ion, Li-SOCl₂)
-
-The repository includes (or will include):
-
-- `home-assistant/` – sample HA config / dashboard
-- InfluxDB integration (time-series storage)
-- Grafana dashboards (visualization of CO₂ / T / RH / VOC / battery)
-
-Typical flow:
-
-1. LocuSense → Matter over Thread → Home Assistant  
-2. Home Assistant → InfluxDB → Grafana dashboard
-
----
-
-## Repository Structure
-
-Suggested structure (adapt if needed):
+Suggested layout for this repository:
 
 ```text
 .
-├── firmware
-│   ├── stm32/         # STM32U0 application (CubeIDE / Makefile)
-│   └── esp32c6/       # ESP32-C6 Matter over Thread project
-├── hardware
-│   └── altium/        # Altium Designer projects (baseboard + RF modules)
-├── home-assistant/
-│   ├── dashboards/    # HA dashboards (YAML, Lovelace) and screenshots
-│   ├── influxdb/      # Example retention / bucket config
-│   └── grafana/       # Example Grafana dashboards (JSON)
-└── README.md
+├─ firmware/
+│  ├─ stm32/
+│  │  ├─ Core/
+│  │  ├─ Drivers/
+│  │  ├─ app/
+│  │  │  ├─ app.c
+│  │  │  ├─ gui/
+│  │  │  │  ├─ GUI.c
+│  │  │  │  └─ images.h / bitmaps
+│  │  │  ├─ conf_console.c
+│  │  │  ├─ wioe5/        # LoRaWAN driver & helpers
+│  │  │  ├─ esp32c6/      # UART text protocol helpers
+│  │  │  ├─ ee_config/    # M24C02 config load/save
+│  │  │  └─ ...
+│  │  └─ ...
+│  └─ esp32c6/
+│     ├─ main/
+│     │  ├─ app_main.cpp  # Matter + UART text protocol
+│     │  └─ CMakeLists.txt
+│     └─ sdkconfig.default
+│
+├─ hardware/
+│  ├─ altium/
+│  │  ├─ LocuSense_PCB.PrjPcb
+│  │  ├─ schematics/
+│  │  └─ pcb/
+│  └─ modules/
+│     ├─ wioe5/           # RF footprint / app note links
+│     └─ esp32c6/
+│
+├─ home-assistant/
+│  ├─ matter/
+│  │  ├─ dashboard_locusense.yaml
+│  │  └─ helpers.md       # notes on HA Green + SkyConnect setup
+│  ├─ lora_ttn/
+│  │  ├─ ttn_payload_decoder.js
+│  │  ├─ node_red_flow.json
+│  │  └─ ha_sensors_mqtt.yaml
+│  └─ influxdb_grafana/
+│     ├─ influxdb_config.md
+│     └─ grafana_dashboard.json
+│
+├─ docs/
+│  ├─ img/
+│  │  ├─ device_front.jpg
+│  │  ├─ ha_dashboard.png
+│  │  ├─ grafana_dashboard.png
+│  │  └─ node_red_flow.png
+│  └─ diagrams/
+│     ├─ architecture.png
+│     └─ power_domains.png
+│
+└─ README.md
 ```
 
----
+```text
+docs/img/node_red_flow.png
+```
 
-## Building & Flashing
-
-### STM32U0 Firmware
-
-- Toolchain: STM32CubeIDE or any arm-none-eabi-gcc based setup.
-- Dependencies:
-  - STM32U0 HAL / LL
-  - Drivers for:
-    - SCD41, SHT41, SGP40
-    - Wio-E5 (AT driver)
-    - BQ25185
-    - EPD_2in13_V4 + paint library
-    - M24C02 EEPROM
-  - Sensirion VOC algorithm library
-- Build, flash via SWD (ST-Link), SWD pins are left enabled in firmware (note: they can be disabled in production).
-
-### ESP32-C6 Firmware
-
-- Toolchain: ESP-IDF (v5.x) + esp-matter  
-- Configure project:
-  - Enable Thread + SED mode
-  - Configure storage / NVS
-- Build & flash:
-  ```bash
-  idf.py set-target esp32c6
-  idf.py build
-  idf.py flash monitor
-  ```
+![Example Node-RED / TTN flow](docs/img/node_red_flow.png)
 
 ---
 
-## Modes & Configuration Summary
+## Configuration & EEPROM (M24C02)
 
-Config keys (via `SET <key> <value>` in console):
+Each **communication module** (LoRaWAN Wio-E5 carrier or ESP32-C6 carrier) includes its own
+**M24C02 I²C EEPROM**. That EEPROM holds everything the node needs to know about:
 
-- `measure_mode` / `mm`
-  - `0` = CO₂ + T + RH (SCD41 + SHT41)
-  - `1` = T + RH only (SHT41)
-- `voc_mode` / `voc`
-  - `0` = VOC_DISABLED
-  - `1` = VOC_CONT_USB (VOC only when USB is powered)
-- `comms_mode` / `comms`
-  - `0` = COMMS_OFFLINE (no radio, GUI only)
-  - `1` = COMMS_LORA (Wio-E5 LoRaWAN)
-  - `2` = COMMS_MATTER (ESP32-C6, Matter over Thread)
-- `interval_measure_sec` / `tm`
-- `interval_sleep_sec` / `ts`
-- `interval_time_req_sec` / `tt` (LoRa time sync)
-- `interval_bat_sec` / `tb`
-- `tx_min_interval_sec` / `txmin`
-- `tx_max_interval_sec` / `txmax` (heartbeat)
-- `th_temp_01C` / `dT`
-- `th_rh_01pct` / `dRH`
-- `th_co2_ppm` / `dCO2`
+- which communication stack to use, and
+- how it should behave in the field.
 
-Don’t forget to call `SAVE` if you want to persist changes to EEPROM.
+Stored data:
+
+- **Device config (`AppConfig`)**
+  - Measurement mode (CO₂+T+RH vs T+RH only)
+  - VOC mode (disabled vs continuous on USB)
+  - Communication mode (OFFLINE / LoRa / Matter)
+  - Measurement / sleep / time-sync / battery intervals
+  - TX thresholds for CO₂, T, RH
+- **LoRaWAN (Wio-E5) OTAA credentials**
+  - AppEUI, DevEUI, AppKey, ADR flag
+- **ESP32-C6 pairing data**
+  - Last Matter QR string
+  - Manual pairing code
+
+On every **cold boot**, the STM32:
+
+1. Powers the sensor and RF rails.
+2. Enables I²C pull-ups.
+3. Probes the attached communication module and reads its **M24C02** over I²C.
+4. Loads `AppConfig`, LoRa keys or ESP pairing data from that EEPROM.
+5. Initializes **either** Wio-E5 **or** ESP32-C6 depending on the stored `comms_mode`.
+
+This means you can **pre-provision communication modules** (configure once via the console
+and `SAVE`), and then plug them into any LocuSense base board. The module carries its own
+configuration with it; on boot, the STM32 simply reads the M24C02 and starts communication
+and housekeeping according to those parameters.
 
 ---
 
-## License
+## UART configuration console (USART4 over USB‑to‑UART)
 
-TBD.  
-Choose a license (e.g. MIT, Apache-2.0, GPL) and put it here.
+A minimal interactive configuration console is available on **USART4**, which is routed
+through the on-board **USB‑to‑UART bridge** to the USB‑C connector. In practice you just
+plug the node into a PC and open a serial terminal (e.g. **Tera Term**, PuTTY, minicom)
+with the parameters below while the device is in **CONFIG mode**.
+
+- **Baud:** `115200`
+- **Data bits:** 8
+- **Parity:** none
+- **Stop bits:** 1
+- **Recommended TX delay:** **≥ 5 ms/char** in your terminal to avoid overrunning the parser.
+- Console starts when you **hold the button for ≥ 5 s** (see [Button functions](#button-functions)).
+
+Basic commands (non-exhaustive):
+
+- `HELP` – print help and command summary
+- `SHOW` – print current device config, Wio-E5 keys and ESP32-C6 status/QR/manual
+- `SET <key> <value>` – change device-level config (measurement intervals, thresholds, modes…)
+- `RESET` – restore firmware defaults for `AppConfig` in RAM
+- `SAVE` – store current `AppConfig`, Wio OTAA keys and ESP pairing data to EEPROM (M24C02) on the module
+- `EXIT` – leave CONFIG mode (same as a second ≥5 s button hold or inactivity timeout)
+
+### LoRaWAN-related console commands
+
+- `WIO SHOW` – show current AppEUI / DevEUI / AppKey / ADR
+- `WIO SET APP_EUI <16hex>`
+- `WIO SET DEV_EUI <16hex>`
+- `WIO SET APP_KEY <32hex>`
+- `WIO SET ADR <0|1>`
+- `WIO JOIN` – perform an immediate OTAA join
+- `WIO SEND HEX <12hex>` / `WIO SENDU HEX <12hex>` – confirmed / unconfirmed uplink
+- `WIO SEND KV T=<i16> RH=<u16> CO2=<u16>` – build a 6-byte payload from values and send
+- `WIO TIME` – request current UNIX time over LoRaWAN. A TTN + Node‑RED flow decodes the uplink and returns a 4‑byte timestamp which is then written into the STM32 RTC.
+
+### ESP32-C6 / Matter-related console commands
+
+- `ESP PING` – check the UART link to ESP32-C6
+- `ESP STATUS` – query current status (`STATUS ONLINE role=SED` or `STATUS OFFLINE`)
+- `ESP VERSION` – print firmware/version info
+- `ESP QR` – request Matter QR & manual pairing codes
+  - Text is printed on UART **and** a QR code is drawn on the e-ink display.
+- `ESP COMM START` – open a Matter commissioning window
+  - Device responds with `COMM STATE ...` and QR data; QR is also rendered on e-ink.
+- `ESP COMM STOP` – close the commissioning window
+- `ESP FABRICS` – list stored fabrics/controllers
+- `ESP FACTORYRESET` – factory-reset the ESP32-C6 (clears fabrics/commissioning info)
+- `ESP SEND HEX <12hex>` / `ESP SEND KV ...` – send a 6-byte payload via Matter text frame
+
+The ESP32-C6 firmware also emits progress/status messages back over UART (`COMM STATE ...`,
+`COMM DONE`, `COMM TIMEOUT`, etc.), which you can see in your terminal when commissioning
+the device.
 
 ---
 
-## Status
+## Transmission & e-ink update policy (power-oriented)
 
-This project is under active development.  
-Hardware, STM32 firmware, ESP32-C6 Matter firmware and Home Assistant dashboards are all included in this repository.
+To **save energy** (and not only to avoid spamming the network), both radio transmissions
+and e-ink updates are **event-driven**:
 
-Contributions and issue reports are welcome.
+### Radio TX (LoRa / Matter)
+
+A new payload is sent only when all of these conditions are satisfied:
+
+- Communication mode is `COMMS_LORA` or `COMMS_MATTER` (not OFFLINE)
+- A baseline payload exists (first measured packet always sets it)
+- **Minimum TX interval** has elapsed since the last uplink
+- **At least one threshold** is exceeded compared to the last sent payload:
+  - |ΔT| ≥ `th_temp_01C` (0.01 °C units)
+  - |ΔRH| ≥ `th_rh_01pct` (0.01 %RH units)
+  - |ΔCO₂| ≥ `th_co2_ppm` (ppm)
+- Or the **heartbeat** interval `tx_max_interval_sec` has elapsed (periodic refresh)
+
+You can tune these thresholds in CONFIG mode using `SET` commands, for example:
+
+```text
+SET dT 20       # 0.20 °C
+SET dRH 100     # 1.00 %RH
+SET dCO2 50     # 50 ppm
+```
+
+### E-ink redraw
+
+The e-ink is **not** refreshed on every wake-up. A full GUI redraw happens when:
+
+- The panel was blank (first boot)
+- Communication state changes (connected / disconnected)
+- USB plug/unplug, charger status, battery presence or voltage change (above hysteresis)
+- Main measurable values change beyond TX thresholds or cross “emoji buckets”
+  (CO₂ bands 800 / 1200 / 2500 ppm, temperature bands 15 / 35 °C)
+
+Between full redraws, only tiny partial regions are updated:
+
+- State line at the bottom (current FSM state)
+- VOC line when new VOC index samples are available
+
+This significantly reduces e-ink wear and display power consumption.
+
+---
+
+## Button functions
+
+The front button is multi-function and time-based:
+
+- **Short press**  
+  Wake the node from STOP2 sleep (LoRa mode) and force a measurement/UI refresh.
+
+- **Hold ≥ 5 s — enter/exit CONFIG mode**  
+  - Enters the UART configuration console on `USART4` at **115200 8N1**.  
+  - You can also leave CONFIG mode with the `EXIT` command or by another ≥ 5 s hold.  
+  - For reliable input, set your terminal transmit delay to **≥ 5 ms/char**.
+
+- **Hold 15–29 s — force SCD41 recalibration to 400 ppm**  
+  - 400 ppm is the **typical CO₂ concentration in fresh outdoor air**.  
+  - Recommended procedure:
+    1. Take the device to **clean outdoor air** (away from people, traffic, exhausts).
+    2. Let it **stabilize for at least 15 minutes** in that environment.
+    3. Then press and hold the button for **15–29 s** to trigger the recalibration.
+  - For most installations, doing this **about once per year** is sufficient,
+    or whenever you suspect the CO₂ reading has drifted.
+
+- **Hold ≥ 30 s — full system reset**  
+  - Triggers a system reset of the STM32.  
+  - Configuration stored in the M24C02 EEPROM (measurement config, LoRa keys, ESP pairing)
+    is **preserved** unless explicitly cleared in firmware.
+
+---
+
+## LoRaWAN → TTN → Home Assistant
+
+For LoRa deployments, the node talks to a **Wio-E5** module using a simple AT-style driver.
+
+- OTAA join is handled automatically on boot and on recover.
+- Example integration flow:
+  1. Wio-E5 joins **The Things Network (TTN)**.
+  2. TTN pushes uplinks to **MQTT**.
+  3. A **Node-RED** flow (provided) decodes the 6-byte payload into CO₂ / T / RH values.
+  4. Node-RED publishes these as **Home Assistant MQTT sensors** (via discovery or HA add-on).
+
+Additionally, a small TTN + Node-RED helper flow is used for **time synchronisation**: the node sends a dedicated uplink, Node-RED calculates the current UNIX timestamp and returns it as a 4‑byte downlink payload. The firmware parses this frame and updates the STM32 RTC so logged samples carry a real wall‑clock time.
+
+An example Node-RED flow and TTN payload decoder are included in [`/node-red/`](node-red/) and [`/home-assistant/lora_ttn`](home-assistant/lora_ttn).
+
+
+---
+
+## Matter over Thread – Home Assistant & Google Nest Hub
+
+With the ESP32-C6 module populated and `comms_mode = COMMS_MATTER`, the device acts as a
+**Matter over Thread sleepy end device**:
+
+- Tested with **Home Assistant Green + SkyConnect** (SkyConnect configured as Thread border router).
+- Exposes:
+  - Temperature, humidity, air quality (from CO₂)
+  - CO₂ concentration cluster (0x040D, MEA)
+  - Power Source info for USB, Li-Ion and LiSOCl₂
+
+Pairing workflow:
+
+1. Enter CONFIG mode and run `ESP COMM START` **or** `ESP QR` in the console.  
+   The device prints the **QR and manual pairing code** and also draws the QR on the e-ink display.
+2. In Home Assistant, add a new **Matter** device and scan the QR code.
+3. After commissioning, all sensors appear in HA; you can then import the example dashboard.
+
+```text
+docs/img/ha_matter_pairing.png
+```
+
+![Matter pairing and e-ink QR](docs/img/ha_matter_pairing.png)
+
+### Google Nest Hub
+
+The same Matter endpoint can in principle be paired with a **Google Nest Hub**. However,
+support for some clusters (especially custom CO₂ cluster and power source details) may be
+limited on current Nest firmware. Standard temperature / humidity / air quality should be
+usable, but cluster coverage may vary between ecosystems.
+
+---
+
+## Building & flashing
+
+### STM32U0 firmware
+
+- Project structured for **STM32CubeIDE** (or generic Makefile/CMake if you prefer).
+- Key files:
+  - `firmware/stm32/app/app.c` – main state machine (INIT → MEASURE → BAT_MEASURE → SEND_DATA → ...)
+  - `firmware/stm32/app/GUI.c` – e-ink GUI
+  - `firmware/stm32/app/conf_console.c` – UART config console
+- Make sure to configure:
+  - Correct RTC source (LSE)
+  - LPTIM2 for 10 s VOC ticks (if VOC is enabled)
+  - GPIO sleep configuration (keep pins list in `app.c`)
+
+### ESP32-C6 firmware (Matter)
+
+- Based on **esp-matter** and **ESP-IDF** (version as in your environment).
+- Main application: `firmware/esp32c6/main/app_main.cpp`
+  - Sets up Matter node and endpoints
+  - Implements the **text-based UART protocol** with STM32
+  - Manages WAKE/READY handshake and light sleep
+- Typical build steps:
+
+```bash
+cd firmware/esp32c6
+idf.py set-target esp32c6
+idf.py build
+idf.py flash monitor
+```
+
