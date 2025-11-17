@@ -1,6 +1,6 @@
 # LocuSense STM32U0 Firmware
 
-Open-source firmware for the LocuSense air-quality node built around an STM32U073RCT6.
+Firmware for the LocuSense air-quality node built around an STM32U073RCT6.
 The code measures CO2/temperature/humidity/VOC with Sensirion sensors, renders the
 data on a 2.13" e-paper display, pushes a compact 6-byte payload over LoRaWAN or
 Matter/Thread (via ESP32-C6), and turns power rails on/off aggressively to maximize
