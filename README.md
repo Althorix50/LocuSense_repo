@@ -19,7 +19,6 @@ long-life, headless deployments.
 - **CO₂** – Sensirion **SCD41**
 - **Temperature & humidity** – Sensirion **SHT41**
 - **VOC index** – Sensirion **SGP40** with official Gas Index Algorithm (VOC index)
-- On-board RTC with optional **LoRaWAN time synchronisation** (TTN + Node-RED flow) for time-stamped samples
 
 ### Power & batteries
 
@@ -39,8 +38,6 @@ long-life, headless deployments.
 
 ### Communication (choose one module per board)
 
-The PCB is designed to host **exactly one** RF module at a time:
-
 - **LoRaWAN module – Seeed Wio-E5**
   - Configurable OTAA keys (AppEUI, DevEUI, AppKey, ADR flag)
   - Integration with **The Things Network (TTN)**
@@ -56,14 +53,14 @@ The PCB is designed to host **exactly one** RF module at a time:
     - **Power Source cluster** for USB, Li-Ion, LiSOCl₂
   - Text-based UART protocol between STM32 and ESP32-C6 (DATA / STATUS / COMM / QR …)
 
-Only one of these modules is populated and connected to the RF power rail; firmware detects
+Only one of these modules is populated and connected to the RF connector; firmware detects
 the configured communication mode and drives either **LoRaWAN** or **Matter**.
 
 ### Local UI – e-ink display
 
 - 2.13" e-ink (Waveshare / Good Display, `EPD_2in13_V4`)
 - Shows:
-  - CO₂ (ppm) + compact gauge with thresholds (800 / 1200 ppm)
+  - CO₂ (ppm) + compact gauge with thresholds
   - Temperature and RH with tiny trend arrows
   - VOC index (when USB + VOC mode are enabled)
   - Connection state (LoRa or Matter)
