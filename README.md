@@ -83,7 +83,7 @@ the configured communication mode and drives either **LoRaWAN** or **Matter**.
   - Ready-to-use HA dashboard configuration included
 - Data flow options:
   - **Matter over Thread (ESP32-C6)** – native Matter device
-  - **LoRaWAN via TTN → MQTT → Node-RED → Home Assistant** – for large building deployments
+  - **LoRaWAN via TTN → (MQTT → Node-RED → Home Assistant)** - in my example
 
 ### Data storage & analytics
 
@@ -368,7 +368,7 @@ The front button is multi-function and time-based:
 
 ---
 
-## LoRaWAN → TTN → Home Assistant
+## LoRaWAN → TTN → Home Assistant example
 
 For LoRa deployments, the node talks to a **Wio-E5** module using a simple AT-style driver.
 
