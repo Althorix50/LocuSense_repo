@@ -59,6 +59,8 @@ Only one of these modules is populated and connected to the RF connector; firmwa
 configured communication mode and drives either **LoRaWAN** or **Matter** with no code changes
 on your side.
 
+![LocuSense Hardware overview](docs/images/hardware_overview.png)
+
 ### Local UI – e-ink display
 
 - 2.13" e-ink (Waveshare / Good Display, `EPD_2in13_V4`)
