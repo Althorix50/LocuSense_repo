@@ -89,7 +89,7 @@ setup exposes:
 > Adjust the entity IDs in the examples below to match what you see in  
 > **Settings → Devices & services → [your device] → Entities**.
 
-![Matter device](docs/images/matter_device.png)
+![Matter device](../../docs/images/matter_device.png)
 
 ---
 
@@ -308,7 +308,7 @@ Make sure that:
 - Grafana allows embedding (`GF_SECURITY_ALLOW_EMBEDDING=true`).
 - Either anonymous access is enabled (Viewer role) or the iframe can authenticate.
 
-![Matter dashboard](docs/images/matter_dashborad.png)
+![Matter dashboard](../../docs/images/matter_dashborad.png)
 
 ---
 
