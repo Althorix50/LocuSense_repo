@@ -108,6 +108,25 @@ editing them manually.
 - Each command prints textual feedback, and optional E-Ink partial updates use
   `GUI_DrawConfIcon`, `GUI_DrawConfOk`, and `GUI_DrawConfError`.
 
+Supported `SET <key> <value>` pairs (same parser as `Core/Src/conf_console.c`):
+
+| Key (alias)                  | Allowed values / units                                                                 | Notes                                                                                     |
+|-----------------------------|-----------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------|
+| `measure_mode` (`mm`)       | `0` = CO2+T+RH, `1` = T+RH only                                                         | Enables/disables SCD41 sampling.                                                          |
+| `voc_mode` (`voc`)          | `0` = disabled, `1` = VOC only while USB is present                                     | Continuous VOC draws more current; keep it off for pure battery.                          |
+| `comms_mode` (`comms`)      | `0` = offline GUI, `1` = LoRaWAN (Wio-E5), `2` = Matter over Thread (ESP32-C6 build)    | Chooses which radio stack initializes in `STATE_INIT`.                                    |
+| `interval_measure_sec` (`tm`)| Seconds                                                                                | Primary measurement cadence.                                                              |
+| `interval_sleep_sec` (`ts`) | Seconds                                                                                 | STOP2 sleep gap between cycles when VOC is idle.                                          |
+| `interval_time_req_sec` (`tt`)| Seconds (`0` disables)                                                                | LoRa network time-sync request interval.                                                  |
+| `interval_bat_sec` (`tb`)   | Seconds                                                                                 | Battery/USB/charger measurement cadence.                                                  |
+| `tx_min_interval_sec` (`txmin`)| Seconds                                                                              | Minimum spacing enforced between any TX events.                                           |
+| `tx_max_interval_sec` (`txmax`)| Seconds (`0` disables heartbeat)                                                      | Forces a heartbeat if no delta-triggered TX happens before this timeout.                  |
+| `th_temp_01C` (`dT`)        | Delta in 0.01 °C                                                                        | GUI/radio updates trigger once |ΔT| exceeds this.                                       |
+| `th_rh_01pct` (`dRH`)       | Delta in 0.01 %RH                                                                       | Same principle for humidity.                                                              |
+| `th_co2_ppm` (`dCO2`)       | Delta in ppm                                                                            | Same principle for CO₂.                                                                   |
+
+> Always provide the numeric value in the console (e.g. `SET comms_mode 2` for Matter, `SET comms_mode 1` for LoRa).
+
 ## Communications and Payload Format
 - **Payload layout**: 6 bytes total  
   `T` = int16 in 0.01 degC, `RH` = uint16 in 0.01 %RH, `CO2` = uint16 ppm.

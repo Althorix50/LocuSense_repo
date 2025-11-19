@@ -52,10 +52,10 @@ On the LoRaWAN side this example has been tested with:
 ### Firmware / console checklist
 
 - Flash the **STM32 LoRaWAN build** and in the console run
-  `SET comms_mode COMMS_LORA` (alias `SET comms COMMS_LORA` also works).
+  `SET comms_mode 1` (alias `SET comms 1`) to select `COMMS_LORA`.
 - Run `SHOW` (or `GET`) in the console to double-check that `comms_mode = COMMS_LORA`
   and that Matter-specific toggles stay disabled.
-- Optional sanity check: `WIO INFO` echoes the current App/Dev EUIs and confirms the module
+- Optional sanity check: `WIO SHOW` echoes the current App/Dev EUIs and confirms the module
   responds before you move on to TTN provisioning.
 
 ---
@@ -69,7 +69,7 @@ values from TTN:
 - `DevEUI` – 16 hex characters
 - `AppKey` – 32 hex characters
 
-> Make sure the firmware is in **`COMMS_LORA`** mode (`SET comms_mode COMMS_LORA`
+> Make sure the firmware is in **`COMMS_LORA`** mode (`SET comms_mode 1`
 > in the STM32 console) so that the LoRaWAN stack is active before you proceed.
 > A full console command reference lives in `firmware/stm32/README.md`
 > (see the *Configuration Console* section).
@@ -98,7 +98,7 @@ via the node's configuration console.
    SAVE
    ```
 
-A quick WIO INFO printout should now show the newly stored OTAA keys. If you want to test connectivity before deploying, you can issue a manual WIO JOIN and watch the join status both in the console and in the TTN Application event log.
+A quick `WIO SHOW` printout should now show the newly stored OTAA keys. If you want to test connectivity before deploying, you can issue a manual `WIO JOIN` and watch the join status both in the console and in the TTN Application event log.
 
 On next boot the node reads configuration from the EEPROM on the LoRa module,
 joins the network via OTAA and begins periodic uplinks according to the

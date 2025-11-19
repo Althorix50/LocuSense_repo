@@ -77,6 +77,18 @@ Additional asynchronous responses:
 - `COMM QR ...`, `COMM MANUAL ...`, `COMM DONE`, `COMM TIMEOUT`, `COMM CLOSED` for higher-level commissioning state reporting.
 - `STATUS ...` lines may also be pushed proactively when Thread state changes.
 
+### Console hooks on the STM32 side
+
+All of the commands above are exposed to the end user through the STM32 UART console
+(`firmware/stm32/Core/Src/conf_console.c`). Typical usage:
+
+- `ESP PING` / `ESP STATUS` / `ESP VERSION` — verify UART health and cached runtime status.
+- `ESP QR` together with `ESP COMM START` / `ESP COMM STOP` — pull fresh QR/manual codes and open/close the Matter commissioning window (the STM32 also caches the data in EEPROM and draws the QR on the E-Ink UI).
+- `ESP FABRICS`, `ESP FABRIC REMOVE <idx>`, `ESP FACTORYRESET` — manage stored commissioners without touching ESP-IDF firmware.
+- `ESP SEND HEX|KV ...` — transmit ad-hoc telemetry frames via Matter for testing.
+
+Make sure the STM32 config console stays on `comms_mode = COMMS_MATTER`, adjust measurement/telemetry intervals as needed, then `SAVE` to persist both STM32 config and ESP pairing data to EEPROM before rebooting.
+
 Matter endpoints & clusters
 ---------------------------
 - **Endpoint 1 – Temperature sensor**: standard Temperature Measurement cluster with ±40 °C to 125 °C range (0.01 °C format).

@@ -237,6 +237,25 @@ Basic commands (non-exhaustive):
 - `SAVE` – store current `AppConfig`, Wio OTAA keys and ESP pairing data to EEPROM (M24C02) on the module
 - `EXIT` – leave CONFIG mode (same as a second ≥5 s button hold or inactivity timeout)
 
+Supported `SET <key> <value>` options (mirrors `Core/Src/conf_console.c`):
+
+| Key (alias)                  | Allowed values / units                                                                 | Purpose                                                                                  |
+|-----------------------------|-----------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------|
+| `measure_mode` (`mm`)       | `0` = CO2+T+RH, `1` = T+RH only                                                         | Pick which sensors run each cycle.                                                       |
+| `voc_mode` (`voc`)          | `0` = disabled, `1` = VOC only when USB power is present                                | Gate VOC sampling to save power on battery.                                              |
+| `comms_mode` (`comms`)      | `0` = offline GUI, `1` = LoRaWAN (Wio-E5), `2` = Matter over Thread (ESP32-C6 build)    | Select the radio backend that the STM32 should drive.                                    |
+| `interval_measure_sec` (`tm`)| Seconds                                                                                | Measurement cadence (CO2/T/RH or T/RH).                                                  |
+| `interval_sleep_sec` (`ts`) | Seconds                                                                                 | STOP2 sleep duration between measurement cycles (when VOC is idle).                      |
+| `interval_time_req_sec` (`tt`)| Seconds (`0` disables)                                                                | LoRaWAN network time-sync interval.                                                      |
+| `interval_bat_sec` (`tb`)   | Seconds                                                                                 | Battery/USB/charger measurement cadence.                                                 |
+| `tx_min_interval_sec` (`txmin`)| Seconds                                                                              | Minimum spacing between radio uplinks.                                                   |
+| `tx_max_interval_sec` (`txmax`)| Seconds (`0` disables heartbeat)                                                      | Maximum silence before forcing a heartbeat uplink.                                       |
+| `th_temp_01C` (`dT`)        | Delta in 0.01 °C (e.g. `20` = 0.20 °C)                                                  | Temperature change threshold that triggers TX/GUI updates.                               |
+| `th_rh_01pct` (`dRH`)       | Delta in 0.01 %RH (e.g. `100` = 1.00 %RH)                                               | Humidity change threshold.                                                               |
+| `th_co2_ppm` (`dCO2`)       | Delta in ppm (e.g. `50`)                                                                | CO2 change threshold.                                                                    |
+
+> Enter the numeric value when using `SET`, e.g. `SET comms_mode 2` selects Matter over Thread and `SET comms_mode 1` selects LoRaWAN.
+
 ### LoRaWAN-related console commands
 
 - `WIO SHOW` – show current AppEUI / DevEUI / AppKey / ADR
