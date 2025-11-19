@@ -7,12 +7,6 @@ history, InfluxDB and Grafana visualization.
 > ℹ️ LoRaWAN / TTN integration is documented separately in the
 > [Home Assistant LoRaWAN guide](../lora/README.md).
 
-LocuSense supports **two mutually exclusive communication stacks** (Matter over Thread or
-LoRaWAN). Use this guide for the ESP32-C6 / Thread workflow and the
-[Home Assistant LoRaWAN guide](../lora/README.md) when you need the
-**Wio-E5 → TTN → MQTT → Node-RED** path. Both approaches share the same sensing platform,
-so you can migrate between them as your deployment evolves.
-
 ### Repository assets in this folder
 
 - `matter_dashboard.yaml` – full Lovelace dashboard referenced in section 5.
