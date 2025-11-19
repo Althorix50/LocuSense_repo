@@ -1,229 +1,118 @@
 # Home Assistant integration (Matter over Thread)
 
-This document describes how to integrate the **LocuSense environmental node** as a  
-**Matter over Thread device** into Home Assistant and how to build a dashboard with  
-history, InfluxDB and Grafana visualization.
+This guide explains how to bring the **LocuSense environmental sensor** online as a
+**Matter-over-Thread** device in Home Assistant, validate the exposed entities and
+reuse the bundled dashboard + Grafana examples.
 
-> ℹ️ LoRaWAN / TTN integration is documented separately in the LoRa firmware README.
+> ℹ️ LoRaWAN/TTN integration lives in [`home-assistant/lora/README.md`](../lora/README.md).
+> The repository-wide overview and hardware details are covered in the [root README](../../README.md).
 
+## Contents
+
+1. [Prerequisites](#1-prerequisites)
+2. [Create and verify a Thread network](#2-create-and-verify-a-thread-network)
+3. [Commission the LocuSense Matter device](#3-commission-the-locusense-matter-device)
+4. [Check the exposed entities](#4-check-the-exposed-entities)
+5. [Build the Matter dashboard](#5-build-the-matter-dashboard)
+6. [Feed data into InfluxDB and Grafana](#6-feed-data-into-influxdb-and-grafana)
+7. [Embed Grafana panels back into Home Assistant](#7-embed-grafana-panels-back-into-home-assistant)
+8. [Security best practices](#8-security-best-practices)
+9. [Troubleshooting](#9-troubleshooting)
 
 ---
 
 ## 1. Prerequisites
 
-You will need:
+Make sure you have:
 
-- A running **Home Assistant** instance (OS / Supervised recommended).
-- **Home Assistant Connect ZBT-1** (or equivalent Thread border router) properly set up.
-- The LocuSense node configured as a **Matter over Thread environmental sensor**
-  (ESP32-C6 firmware flashed and working).
-- Optional but recommended:
-  - **InfluxDB** add-on (for long-term storage)
-  - **Grafana** add-on (for nice charts, embedded into Home Assistant)
-  - Optional remote access via **Cloudflared** (HTTPS tunnel / reverse proxy)
+- **Home Assistant OS / Supervised** (or another install with add-ons).
+- A **Thread border router** such as **Home Assistant Connect ZBT-1** (aka SkyConnect) or
+a certified Border Router with Thread 1.3 support.
+- A LocuSense board with the **ESP32-C6 radio populated**, flashed with the Matter firmware
+  (`firmware/esp32c6`).
+- USB access to the device so you can enter CONFIG mode if you need to reprint the QR code.
+- Optional but recommended add-ons:
+  - **InfluxDB** for long-term storage of HA sensor data.
+  - **Grafana** for historic charts and kiosk-style dashboards.
+  - **Cloudflared** (or another secure tunnel/VPN) if you want remote access.
 
 ---
 
 ## 2. Create and verify a Thread network
 
-If you are using **Home Assistant Connect ZBT-1**, follow the official guides:
+1. Follow the official instructions for your border router (e.g. Connect ZBT-1 guide from Nabu Casa).
+2. After onboarding, open **Settings → Devices & Services → Thread** in Home Assistant.
+3. Confirm that:
+   - The border router shows as **Online**.
+   - At least one **Thread network** exists and is marked **Active**.
+   - The ESP32-C6 node will be in radio range once powered.
 
-- Forming a Thread network with Connect ZBT-1  
-  – see the vendor guide (Nabu Casa) for **forming a new Thread network**.
-- Home Assistant docs: **Thread integration** and adding Thread devices.  
-
-Make sure that after setup you can see a **Thread network** under:
-
-> **Settings → Devices & services → Thread**
-
-Check that:
-
-- The ZBT-1 is **Online**.
-- At least one **Thread network** is listed and **Active**.
-- The ESP32-C6 node is in radio range of the border router.
+If you already have a Thread network for other Matter devices you can reuse it—LocuSense will join as another sleepy end device.
 
 ---
 
 ## 3. Commission the LocuSense Matter device
 
-The ESP32-C6 module exposes LocuSense as a **Matter environmental sensor** with
-CO₂, temperature, humidity, air quality and dual-battery monitoring.
+The ESP32-C6 exposes LocuSense as a Matter environmental sensor with CO₂, temperature,
+humidity, air-quality and dual-battery telemetry.
 
-1. Put the device into **Matter commissioning mode**  
-   (see the ESP32-C6 firmware README for the exact button/command).  
-   Typically you will either:
-   - Scan a **Matter QR code** shown on the E-Ink display / label, or  
-   - Use a **numeric setup code**.
+1. **Enter commissioning mode** on the device:
+   - Hold the front button ≥5 s to enter CONFIG mode and run `ESP COMM START`, or
+   - Use the console command `ESP QR` to redraw/print the QR pairing code.
+2. In Home Assistant select **Settings → Devices & Services → Add Integration → Matter**.
+3. Choose **Add Matter device**, then scan the on-device QR code (or enter the manual code).
+4. Wait for onboarding to finish. A new device (the default name is the Matter product label, e.g. `Test product`) should appear with multiple entities.
 
-2. In Home Assistant, go to:
-
-   > **Settings → Devices & services → Add integration → Matter**
-
-3. Follow the on-screen wizard:
-   - Select **Add Matter device**.
-   - Scan the QR code or enter the pairing code.
-   - Wait for the onboarding to finish and the device to appear.
-
-4. After pairing, you should see a new device (e.g. `Test product`) with several entities
-   (sensors and binary sensors).
+> If pairing fails, long-press the button ≥30 s to reset the ESP32-C6 and try again.
 
 ---
 
-## 4. Exposed entities (example)
+## 4. Check the exposed entities
 
-The exact entity IDs will depend on your Matter firmware and HA naming, but a typical
-setup exposes:
+Entity IDs depend on your Matter setup, but you should see a structure similar to the following once the device is joined:
 
-| Function                         | Example entity ID                          | Notes                              |
-|----------------------------------|--------------------------------------------|------------------------------------|
-| Temperature                      | `sensor.test_product_temperature`          | °C                                 |
-| Relative humidity                | `sensor.test_product_humidity`             | %                                  |
-| CO₂ concentration                | `sensor.test_product_carbon_dioxide`       | ppm                                |
-| Air quality index / category     | `sensor.test_product_air_quality`          | Numeric or descriptive             |
-| Li-Ion battery status (OK/fault) | `binary_sensor.test_product_battery_5`     | `on` = active / fault depends map  |
-| Li-Ion battery voltage           | `sensor.test_product_battery_voltage_5`    | V                                  |
-| Li-SoCl₂ battery status         | `binary_sensor.test_product_battery_6`     | Backup / long-term battery         |
-| Li-SoCl₂ battery voltage        | `sensor.test_product_battery_voltage_6`    | V                                  |
-| Charge state (Li-Ion)           | `sensor.test_product_battery_charge_state` | e.g. Charging / Charged / No USB   |
+| Function                      | Example entity ID                          | Notes                              |
+|-------------------------------|--------------------------------------------|------------------------------------|
+| Temperature                   | `sensor.test_product_temperature`          | °C                                 |
+| Relative humidity             | `sensor.test_product_humidity`             | %                                  |
+| CO₂ concentration             | `sensor.test_product_carbon_dioxide`       | ppm                                |
+| Air quality category/index    | `sensor.test_product_air_quality`          | Derived from CO₂                   |
+| Li-Ion battery presence/fault | `binary_sensor.test_product_battery_5`     | See Power Source cluster mapping   |
+| Li-Ion battery voltage        | `sensor.test_product_battery_voltage_5`    | V                                  |
+| LiSOCl₂ battery presence      | `binary_sensor.test_product_battery_6`     | Backup battery state               |
+| LiSOCl₂ battery voltage       | `sensor.test_product_battery_voltage_6`    | V                                  |
+| Charge state (Li-Ion)         | `sensor.test_product_battery_charge_state` | Charging / Charged / No USB        |
 
-> Adjust the entity IDs in the examples below to match what you see in  
-> **Settings → Devices & services → [your device] → Entities**.
+Open **Settings → Devices & Services → [your device] → Entities** to confirm the exact IDs—these are the values you will reference in dashboards and automations.
 
 ![Matter device](../../docs/images/matter_device.png)
 
 ---
 
-## 5. Example Matter dashboard in Home Assistant
+## 5. Build the Matter dashboard
 
-You can build a dedicated **Matter / Thread** view showing:
+A ready-to-use Lovelace view lives in [`home-assistant/matter_dashboard.yaml`](../matter_dashboard.yaml). It shows:
 
-- Current CO₂, temperature, humidity, air quality.
-- Battery state (Li-Ion + Li-SoCl₂).
-- Short-term history of all values.
-- Optional media player (e.g. Google Nest Hub) to visualize the data in the room.
-- Embedded **Grafana** panels for more advanced charts.
+- Current CO₂ / temperature / humidity / air quality tiles.
+- Dual-battery status, charger state and sleep interval hints.
+- Short-term mini-graphs for each quantity.
+- Optional iframe cards for Grafana panels or a media player.
 
-### 5.1 Dashboard YAML
+To import it:
 
-A complete example dashboard configuration is provided in:
-
-> `home-assistant/matter_dashboard.yaml`
-
-To use it:
-
-1. In Home Assistant, create a new dashboard (or edit an existing one).
+1. In Home Assistant open the dashboard you want to customize.
 2. Click **⋮ → Edit dashboard → Raw configuration editor**.
-3. Paste the content of `matter_dashboard.yaml` (adjust entity IDs as needed).
+3. Paste the YAML from `matter_dashboard.yaml` and replace the `sensor.test_product_*` placeholders with your entity IDs.
 4. Save and reload the dashboard.
 
-The example view includes:
-
-- A digital clock
-- Line graphs for:
-  - `sensor.test_product_temperature`
-  - `sensor.test_product_humidity`
-- A CO₂ gauge:
-  - Min: 350 ppm  
-  - Max: 2500 ppm  
-  - Green: 0–1000 ppm, Yellow: 1000–1500 ppm, Red: 1500+ ppm
-- Tiles for all main sensors and batteries:
-  - Temperature, humidity, CO₂, air quality
-  - Li-Ion and Li-SoCl₂ battery status and voltage
-  - Li-Ion charge state + history graph for charge state
-- A second view for LoRa (if you use the LoRa node) is defined in the same file,  
-  but is independent of Matter and can be removed if not needed.
+![Matter dashboard](../../docs/images/matter_dashborad.png)
 
 ---
 
-## 6. InfluxDB integration
+## 6. Feed data into InfluxDB and Grafana
 
-To store sensor values long-term, enable the **InfluxDB** add-on and configure
-the Home Assistant integration.
-
-### 6.1 Add-on configuration (example)
-
-You can configure the InfluxDB add-on with TLS and authentication,
-for example:
-
-```yaml
-auth: true
-reporting: true
-ssl: true
-certfile: fullchain.pem
-keyfile: privkey.pem
-envvars: []
-```
-
-> ⚠️ Use your own certificates and credentials.  
-> The exact paths and options depend on your environment.
-
-### 6.2 `configuration.yaml` for InfluxDB
-
-In your Home Assistant `configuration.yaml` add something like:
-
-```yaml
-influxdb:
-  host: a0d7b954-influxdb
-  port: 8086
-  database: homeassistant
-  username: YOUR_USERNAME
-  password: YOUR_PASSWORD
-  max_retries: 3
-  default_measurement: state
-```
-
-- `host` can be the internal container name (e.g. when using HA OS add-ons) or
-  the host running InfluxDB.
-- Change the credentials and database name to your own.
-
-For a more detailed walkthrough of integrating **Home Assistant + InfluxDB + Grafana**,  
-see this guide:
-
-- https://www.influxdata.com/blog/how-integrate-gafana-home-assistant/
-
----
-
-## 7. Grafana integration
-
-Grafana is used to visualize the time-series data from InfluxDB and embed
-the charts as panels in the Home Assistant dashboard.
-
-### 7.1 Local-only Grafana (no Cloudflare)
-
-If you run Grafana **only on the local network**, the add-on can be configured
-with a minimal set of environment variables such as:
-
-```yaml
-env_vars:
-  - name: GF_SECURITY_ALLOW_EMBEDDING
-    value: "true"
-  - name: GF_AUTH_ANONYMOUS_ENABLED
-    value: "true"
-  - name: GF_AUTH_ANONYMOUS_ORG_ROLE
-    value: Viewer
-  - name: GF_SERVER_ROOT_URL
-    value: http://homeassistant:3000/
-  - name: GF_SERVER_SERVE_FROM_SUB_PATH
-    value: "false"
-plugins:
-  - yesoreyeram-boomtheme-panel
-custom_plugins: []
-ssl: false
-```
-
-Notes:
-
-- `GF_SECURITY_ALLOW_EMBEDDING` must be `true` to allow `<iframe>` embedding.
-- `GF_AUTH_ANONYMOUS_ENABLED` lets the HA dashboard access Grafana without login
-  (for the Viewer role only).
-- Adjust `GF_SERVER_ROOT_URL` to match how you access Grafana from Home Assistant
-  (`http://<your-ip>:3000/` or similar).
-- Disable SSL (`ssl: false`) if you only use HTTP locally.
-
-### 7.2 Optional: Grafana via Cloudflare tunnel
-
-If you expose Grafana **publicly** through a tunnel / reverse proxy (e.g. the
-**Cloudflared** add-on), you can set up something like:
+The dashboard YAML assumes you are optionally storing Home Assistant sensor data in **InfluxDB**
+and visualizing it via **Grafana**. A common add-on configuration uses environment variables such as:
 
 ```yaml
 env_vars:
@@ -257,7 +146,9 @@ certfile: fullchain.pem
 keyfile: privkey.pem
 ```
 
-And a Cloudflared configuration like:
+Pair this with an **InfluxDB** add-on configuration in `configuration.yaml` (not shown here) to log CO₂, temperature and humidity samples.
+
+If you want remote access, add a Cloudflared tunnel similar to:
 
 ```yaml
 external_hostname: home.example.com
@@ -266,16 +157,12 @@ additional_hosts:
     service: http://a0d7b954-grafana:3000
 ```
 
-> 🔒 If you expose Grafana to the internet, treat this as a development example only.  
-> Use strong credentials, consider disabling anonymous access or restricting access
-> to a VPN / specific IPs.
-
 ---
 
-## 8. Embedding Grafana panels into Home Assistant
+## 7. Embed Grafana panels back into Home Assistant
 
-In the dashboard YAML (`matter_dashboard.yaml`) you can include Grafana panels as
-`iframe` cards, for example:
+Once Grafana is reachable, embed specific panels back into your Lovelace view using either standard `iframe` cards or custom cards.
+A minimal iframe card looks like:
 
 ```yaml
 - type: iframe
@@ -299,53 +186,42 @@ In the dashboard YAML (`matter_dashboard.yaml`) you can include Grafana panels a
       }
 ```
 
-You can also use a custom card such as `custom:addon-iframe-card` if you prefer,
-as shown in the example YAML.
-
-Make sure that:
-
-- The **URL** matches your Grafana instance (local or tunneled).
-- Grafana allows embedding (`GF_SECURITY_ALLOW_EMBEDDING=true`).
-- Either anonymous access is enabled (Viewer role) or the iframe can authenticate.
-
-![Matter dashboard](../../docs/images/matter_dashborad.png)
+Make sure Grafana allows embedding (`GF_SECURITY_ALLOW_EMBEDDING=true`) and that anonymous access or the chosen auth flow works inside the iframe.
 
 ---
 
-## 9. Security and best practices
+## 8. Security best practices
 
-- Change all example usernames and passwords to your own.
-- Use HTTPS and valid certificates for any externally exposed service.
-- If you use anonymous Grafana access, keep it **read-only** and only for the
-  organization/boards you actually want visible.
-- Home Assistant, InfluxDB and Grafana should ideally live on a trusted network
-  or behind a VPN if they hold sensitive sensor data.
+- Rotate every default credential shown above (Grafana admin user, Cloudflared tokens, etc.).
+- Use HTTPS certificates for any externally reachable endpoint (Grafana, Home Assistant, Cloudflared tunnel).
+- Limit anonymous Grafana access to read-only dashboards or keep it disabled entirely.
+- Treat the Home Assistant host as part of a trusted network segment or behind a VPN if you collect sensitive telemetry.
 
 ---
 
-## 10. Troubleshooting
+## 9. Troubleshooting
 
 **Matter device not visible in Home Assistant**
 
-- Check that the Thread network is active and that Connect ZBT-1 is online.
-- Make sure the node is in commissioning mode and close enough to the border router.
-- Try removing and re-adding the device in **Settings → Devices & services → Matter**.
+- Verify the Thread network is online and the border router is powered.
+- Ensure the node is still in commissioning mode (QR code valid, not already paired elsewhere).
+- Remove the device from **Settings → Devices & Services → Matter** and re-add it.
 
-**Entities have different names than in the examples**
+**Entities have different names than the examples**
 
-- Open the device page in HA and confirm the actual entity IDs.
-- Edit the dashboard YAML and replace `sensor.test_product_*` with your IDs.
+- Home Assistant generates entity IDs from the Matter descriptor; open the device page to copy the actual names.
+- Update `matter_dashboard.yaml` (and any automations) with your IDs.
 
-**Grafana iframe shows a blank page**
+**Grafana iframe shows a blank card**
 
-- Verify you can open the Grafana URL in a browser from the same network.
-- Check `GF_SECURITY_ALLOW_EMBEDDING` and `GF_AUTH_ANONYMOUS_ENABLED`.
-- If using HTTPS, ensure the certificate is trusted by the device running the browser.
+- Test the Grafana URL directly in a browser.
+- Confirm the `GF_SECURITY_ALLOW_EMBEDDING` and `GF_AUTH_ANONYMOUS_ENABLED` settings.
+- If using HTTPS, make sure the certificate chain is trusted by the device viewing the dashboard.
 
-**InfluxDB has no data**
+**InfluxDB stays empty**
 
-- Check the Home Assistant logs for `influxdb` errors.
-- Validate `host`, `port`, credentials and `database` in `configuration.yaml`.
-- Confirm that the InfluxDB add-on is running.
+- Inspect Home Assistant logs for the `influxdb` integration.
+- Double-check host/port/database credentials in `configuration.yaml`.
+- Verify that the add-on/container is running and that the retention policy matches your expectations.
 
----
+With these steps the LocuSense Matter variant becomes a first-class Home Assistant sensor, complete with dashboards and history.

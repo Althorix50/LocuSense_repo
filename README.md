@@ -4,6 +4,20 @@ LocuSense is a **battery-powered environmental sensing node** for CO₂, tempera
 It is built around an ultra-low-power **STM32U0** MCU and can be equipped with **one of two mutually exclusive
 communication modules**:
 
+## Repository guide
+
+Use the following READMEs for deeper dives into specific parts of the project:
+
+- [`home-assistant/matter/README.md`](home-assistant/matter/README.md) – pairing the Matter/Thread variant with Home Assistant,
+  importing the sample dashboard and embedding Grafana charts.
+- [`home-assistant/lora/README.md`](home-assistant/lora/README.md) – LoRaWAN → TTN → MQTT → Node-RED → Home Assistant pipeline,
+  including payload decoding and optional timestamp downlinks.
+- [`firmware/stm32/README.md`](firmware/stm32/README.md) – main STM32 firmware, configuration console and sensor/GUI logic.
+- [`firmware/esp32c6/README.md`](firmware/esp32c6/README.md) – ESP32-C6 Matter firmware, UART protocol and build instructions.
+- [`docs/`](docs) – renders, dashboards and wiring overviews referenced across the READMEs.
+
+The high-level overview below summarizes the hardware, firmware and UX features before you dive into the dedicated guides.
+
 - **LoRaWAN (Wio-E5)** – long-range, ultra-low-power operation (few µA sleep current)
 - **ESP32-C6 (Matter over Thread)** – fully integrated with Home Assistant as a sleepy end device (SED)
 
