@@ -24,6 +24,11 @@ Node → LoRa → Gateway → TTN → MQTT → Node-RED → Home Assistant
 
 If you decide to run the **Matter over Thread** workflow instead, jump to the [Home Assistant Matter guide](../matter/README.md) which covers ESP32-C6 commissioning, Thread network setup and dashboard examples that complement the LoRaWAN flow described here.
 
+### Repository assets in this folder
+
+- `lora_ttn_ha_flow.json` – Node-RED flow imported in section 6.
+- Screenshots referenced here live under `../../docs/images/` (shared with the Matter guide).
+
 ---
 
 ## 1. Requirements
@@ -47,8 +52,8 @@ On the LoRaWAN side this example has been tested with:
 ### Firmware / console checklist
 
 - Flash the **STM32 LoRaWAN build** and select `COMMS_LORA` in the `CONFIG` menu.
-- Run `INFO COMMS` / `STATUS RADIO` in the console to verify that the board reports the
-  Wio-E5 module and that the ESP32-C6 interface is disabled.
+- Run `SHOW` (or `GET`) in the console to double-check that `commsMode = COMMS_LORA`
+  and that Matter-specific toggles stay disabled.
 - Optional sanity check: `WIO INFO` echoes the current App/Dev EUIs and confirms the module
   responds before you move on to TTN provisioning.
 
@@ -65,6 +70,8 @@ values from TTN:
 
 > Make sure the firmware is in **`COMMS_LORA`** mode (see the STM32 console
 > `CONFIG` menu) so that the LoRaWAN stack is active before you proceed.
+> A full console command reference lives in `firmware/stm32/README.md`
+> (see the *Configuration Console* section).
 
 These are **stored in the LoRa communication module EEPROM** and configured
 via the node's configuration console.

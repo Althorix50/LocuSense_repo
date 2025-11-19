@@ -4,13 +4,19 @@ This document describes how to integrate the **LocuSense environmental node** as
 **Matter over Thread device** into Home Assistant and how to build a dashboard with  
 history, InfluxDB and Grafana visualization.
 
-> ℹ️ LoRaWAN / TTN integration is documented separately in the LoRa firmware README.
+> ℹ️ LoRaWAN / TTN integration is documented separately in the
+> [Home Assistant LoRaWAN guide](../lora/README.md).
 
 LocuSense supports **two mutually exclusive communication stacks** (Matter over Thread or
 LoRaWAN). Use this guide for the ESP32-C6 / Thread workflow and the
 [Home Assistant LoRaWAN guide](../lora/README.md) when you need the
 **Wio-E5 → TTN → MQTT → Node-RED** path. Both approaches share the same sensing platform,
 so you can migrate between them as your deployment evolves.
+
+### Repository assets in this folder
+
+- `matter_dashboard.yaml` – full Lovelace dashboard referenced in section 5.
+- `../../docs/images/*.png` – screenshots embedded below (kept in the shared docs folder).
 
 
 ---
@@ -58,12 +64,12 @@ The ESP32-C6 module exposes LocuSense as a **Matter environmental sensor** with
 CO₂, temperature, humidity, air quality and dual-battery monitoring.
 
 1. Put the device into **Matter commissioning mode**  
-   (see the ESP32-C6 firmware README for the exact button/command).  
+   (see `firmware/esp32c6/README.md` for the exact button/command).  
    Typically you will either:
    - Scan a **Matter QR code** shown on the E-Ink display / label, or  
    - Use a **numeric setup code**.
-   - In the STM32 console you can confirm radio selection with `INFO COMMS`
-     before attempting commissioning.
+   - In the STM32 console you can confirm radio selection with `SHOW`
+     (look for `commsMode = COMMS_MATTER`) before attempting commissioning.
 
 2. In Home Assistant, go to:
 
