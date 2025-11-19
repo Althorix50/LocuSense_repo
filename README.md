@@ -93,9 +93,18 @@ on your side.
 
 - Example stack:
   - **InfluxDB** for time-series storage
-  - **Grafana** dashboards for CO₂ / T / RH / VOC trends
+- **Grafana** dashboards for CO₂ / T / RH / VOC trends
 - Sample dashboard JSON is provided.
 
+
+## Documentation map
+
+Use these focused guides for deeper dives:
+
+- [Firmware – STM32U0 (LoRaWAN + orchestration)](firmware/stm32/README.md): state machine, configuration console and EEPROM layout.
+- [Firmware – ESP32-C6 bridge (Matter over Thread)](firmware/esp32c6/README.md): ESP-Matter Sleepy End Device, UART protocol and commissioning helpers.
+- [Home Assistant – Matter over Thread integration](home-assistant/matter/README.md): Thread network prep, commissioning, dashboards and Grafana embedding.
+- [Home Assistant – LoRaWAN → TTN → MQTT → Node-RED pipeline](home-assistant/lora/README.md): OTAA provisioning, payload decoder, Node-RED flow and HA dashboards.
 
 ![Grafana dashboard example](docs/images/dashboard_nest.jpg)
 
@@ -378,8 +387,8 @@ node sends a dedicated uplink, Node-RED calculates the current UNIX timestamp an
 it as a 4‑byte downlink payload. The firmware parses this frame and updates the STM32 RTC
 so logged samples carry a real wall‑clock time.
 
-An example Node-RED flow and TTN payload decoder are included in [`/node-red/`](node-red/)
-and [`/home-assistant/lora_ttn`](home-assistant/lora_ttn).
+An example Node-RED flow is provided in [`home-assistant/lora/lora_ttn_ha_flow.json`](home-assistant/lora/lora_ttn_ha_flow.json),
+while the TTN payload decoder lives alongside the Home Assistant YAML under [`home-assistant/lora`](home-assistant/lora/).
 
 
 ---

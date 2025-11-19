@@ -5,6 +5,8 @@ Matter over Thread application for an ESP32-C6 Sleepy End Device (SED) that acts
 
 The design goal is reliability with minimal wake time: the ESP32 sleeps between Thread polls, wakes instantly on `WAKE`, and mirrors STM32 telemetry to Matter clusters without additional parsing on the controller side.
 
+> **Related docs:** [Project overview](../../README.md) for hardware context, [STM32 firmware README](../stm32/README.md) for the sensor-side state machine, and [Home Assistant Matter guide](../../home-assistant/matter/README.md) for commissioning and dashboards.
+
 Key features
 ------------
 - ESP-Matter based Matter-over-Thread SED with commissioning helpers (QR/manual codes sent over UART).

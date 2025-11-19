@@ -6,6 +6,8 @@ data on a 2.13" e-paper display, pushes a compact 6-byte payload over LoRaWAN or
 Matter/Thread (via ESP32-C6), and turns power rails on/off aggressively to maximize
 runtime from the Li-Ion + LiSOCl₂ hybrid battery pack.
 
+> **See also:** [project overview](../../README.md) for hardware context, [ESP32-C6 firmware](../esp32c6/README.md) for the Matter bridge, and the Home Assistant guides ([Matter](../../home-assistant/matter/README.md) / [LoRaWAN](../../home-assistant/lora/README.md)) for end-to-end integrations.
+
 ## Key Features
 - **Single state machine** in `Core/Src/app.c` drives measurements, communications,
   GUI, sleep, user configuration, recovery paths, and sensor calibration.

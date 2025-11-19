@@ -20,6 +20,10 @@ Node → LoRa → Gateway → TTN → MQTT → Node-RED → Home Assistant
 > ⚠️ This README only covers the **LoRaWAN path**. Matter/Thread and the ESP32‑C6
 > firmware are documented separately in the Matter README.
 
+> Firmware context: [`firmware/stm32/README.md`](../../firmware/stm32/README.md) describes the STM32 state machine,
+> while [`firmware/esp32c6/README.md`](../../firmware/esp32c6/README.md) covers the ESP32-C6 bridge. For a hardware overview see the
+> [project root README](../../README.md).
+
 
 
 If you decide to run the **Matter over Thread** workflow instead, jump to the [Home Assistant Matter guide](../matter/README.md) which covers ESP32-C6 commissioning, Thread network setup and dashboard examples that complement the LoRaWAN flow described here.

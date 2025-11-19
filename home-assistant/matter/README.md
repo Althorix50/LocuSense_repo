@@ -7,6 +7,11 @@ history, InfluxDB and Grafana visualization.
 > ℹ️ LoRaWAN / TTN integration is documented separately in the
 > [Home Assistant LoRaWAN guide](../lora/README.md).
 
+> 🔧 Firmware details for the STM32 baseboard and ESP32-C6 bridge live in
+> [`firmware/stm32/README.md`](../../firmware/stm32/README.md) and
+> [`firmware/esp32c6/README.md`](../../firmware/esp32c6/README.md). Visit those before commissioning
+> if you need to rebuild or adjust either MCU.
+
 ### Repository assets in this folder
 
 - `matter_dashboard.yaml` – full Lovelace dashboard referenced in section 5.
