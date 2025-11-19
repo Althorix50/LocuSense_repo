@@ -29,8 +29,9 @@ You will need:
 - **Home Assistant Connect ZBT-1** (or equivalent Thread border router) properly set up.
 - The LocuSense node configured as a **Matter over Thread environmental sensor**
   (ESP32-C6 firmware flashed and working).
-- Firmware console `CONFIG → COMMS` set to **`COMMS_MATTER`** (or `COMMS_THREAD`)
-  so that the STM32 side speaks to the ESP32-C6 co-processor.
+- In the configuration console run `SET comms_mode COMMS_MATTER`
+  (or `COMMS_THREAD`) so that the STM32 side speaks to the ESP32-C6
+  co-processor.
 - Optional but recommended:
   - **InfluxDB** add-on (for long-term storage)
   - **Grafana** add-on (for nice charts, embedded into Home Assistant)
@@ -69,7 +70,7 @@ CO₂, temperature, humidity, air quality and dual-battery monitoring.
    - Scan a **Matter QR code** shown on the E-Ink display / label, or  
    - Use a **numeric setup code**.
    - In the STM32 console you can confirm radio selection with `SHOW`
-     (look for `commsMode = COMMS_MATTER`) before attempting commissioning.
+     (look for `comms_mode = COMMS_MATTER`) before attempting commissioning.
 
 2. In Home Assistant, go to:
 

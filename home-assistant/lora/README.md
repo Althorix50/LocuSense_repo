@@ -51,8 +51,9 @@ On the LoRaWAN side this example has been tested with:
 
 ### Firmware / console checklist
 
-- Flash the **STM32 LoRaWAN build** and select `COMMS_LORA` in the `CONFIG` menu.
-- Run `SHOW` (or `GET`) in the console to double-check that `commsMode = COMMS_LORA`
+- Flash the **STM32 LoRaWAN build** and in the console run
+  `SET comms_mode COMMS_LORA` (alias `SET comms COMMS_LORA` also works).
+- Run `SHOW` (or `GET`) in the console to double-check that `comms_mode = COMMS_LORA`
   and that Matter-specific toggles stay disabled.
 - Optional sanity check: `WIO INFO` echoes the current App/Dev EUIs and confirms the module
   responds before you move on to TTN provisioning.
@@ -68,8 +69,8 @@ values from TTN:
 - `DevEUI` – 16 hex characters
 - `AppKey` – 32 hex characters
 
-> Make sure the firmware is in **`COMMS_LORA`** mode (see the STM32 console
-> `CONFIG` menu) so that the LoRaWAN stack is active before you proceed.
+> Make sure the firmware is in **`COMMS_LORA`** mode (`SET comms_mode COMMS_LORA`
+> in the STM32 console) so that the LoRaWAN stack is active before you proceed.
 > A full console command reference lives in `firmware/stm32/README.md`
 > (see the *Configuration Console* section).
 
