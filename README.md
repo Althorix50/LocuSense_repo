@@ -411,6 +411,9 @@ Pairing workflow:
 2. In Home Assistant, add a new **Matter** device and scan the QR code.
 3. After commissioning, all sensors appear in HA; you can then import the example dashboard.
 
+For a step-by-step walkthrough (Thread network prep, dashboards, Grafana embedding), see
+[`home-assistant/matter/README.md`](home-assistant/matter/README.md).
+
 ![Matter pairing and e-ink QR](docs/images/matter_qr.png)
 
 ### Google Nest Hub
