@@ -1,71 +1,110 @@
-# Home Assistant LoRaWAN example (TTN → MQTT → Node-RED → Home Assistant)
+# Home Assistant LoRaWAN Example (TTN → MQTT → Node-RED → Home Assistant)
 
-This example shows how to integrate a **LocuSense LoRa sensing node** with  
-**The Things Network (TTN)** and expose all important values as entities in  
-**Home Assistant** via the **Node-RED add-on**.
+This example shows how to integrate the **LoRaWAN mode** of the LocuSense node
+with **Home Assistant**, using:
 
-Data path:
+- LoRaWAN end device (LocuSense node with Wio-E5)
+- LoRaWAN gateway
+- **The Things Network (TTN)** as LoRaWAN network server
+- **MQTT** as transport from TTN to your Home Assistant
+- **Node-RED add-on** inside Home Assistant to:
+  - parse TTN JSON messages
+  - create Home Assistant sensors via `node-red-contrib-home-assistant-websocket`
 
-> Node → LoRaWAN → Gateway → TTN → MQTT → Node-RED → Home Assistant
-
-The directory contains:
-
-- `lora_ttn_ha_flow.json` – importable Node-RED flow file
-- This README – step-by-step configuration notes
-
-Example screenshots (optional, if you add them to the repo):
+Data path is:
 
 ```text
-docs/images/lora_nodered_flow.png        # Node-RED flow
-docs/images/ha_lora_entities.png         # Home Assistant entities
+Node → LoRa → Gateway → TTN → MQTT → Node-RED → Home Assistant
 ```
 
-You can then reference them in Markdown, e.g.:
+> ⚠️ This README only covers the **LoRaWAN path**. Matter/Thread and the ESP32‑C6
+> firmware are documented separately in the Matter README.
 
-```md
-![Node-RED flow](../../docs/images/lora_nodered_flow.png)
-![LoRa entities in Home Assistant](../../docs/images/ha_lora_entities.png)
-```
+---
 
+## 1. Requirements
 
-## 1. Prerequisites
+- A running **Home Assistant** instance
+- **Node-RED add-on** installed in Home Assistant
+- TTN account + application + at least one registered device (your LocuSense node)
+- LoRaWAN gateway connected to TTN
+- Basic familiarity with:
+  - TTN Console
+  - MQTT
+  - Node-RED
+  - Home Assistant entities / dashboards
 
-- A running **Home Assistant** instance  
-- **Node-RED add-on** installed and configured to talk to Home Assistant  
-- **MQTT integration** in Home Assistant  
-- An application + device registered in **The Things Network (TTN)** using **OTAA**  
-- A LocuSense node configured for LoRaWAN uplinks (EU868 in this example)
+On the LoRaWAN side this example has been tested with:
 
+- **Frequency plan**: `Europe 863-870 MHz (SF9 for RX2 - recommended)`
+- **LoRaWAN version**: `LoRaWAN 1.0.1`
+- **Regional Parameters version**: `TS001 1.0.1`
 
-## 2. TTN application & device setup
+---
 
-Recommended TTN settings (tested with this node):
+## 2. Configure the LocuSense node (OTAA)
 
-- **Frequency plan:** `Europe 863–870 MHz (SF9 for RX2 – recommended)`
-- **LoRaWAN version:** `LoRaWAN Specification 1.0.1`
-- **Regional Parameters version:** `TS001 Technical Specification 1.0.1`
+The LocuSense node uses **OTAA** (Over-The-Air Activation). You need three
+values from TTN:
 
-The device uses **OTAA**. In TTN you get:
+- `AppEUI` (a.k.a. `JoinEUI`) – 16 hex characters
+- `DevEUI` – 16 hex characters
+- `AppKey` – 32 hex characters
 
-- `AppEUI`
-- `DevEUI`
-- `AppKey`
+These are **stored in the LoRa communication module EEPROM** and configured
+via the node's configuration console.
 
-On the node these values are written once in **CONFIG mode** using the serial console, e.g.:
+1. Connect the node over USB (USB–UART) to your PC.
+2. Open a serial terminal (e.g. TeraTerm) at:
+   - **Baud rate**: `115200`
+   - **Data bits**: `8`
+   - **Parity**: `None`
+   - **Stop bits**: `1`
+3. Enter **CONFIG mode** by holding the button for ~5 seconds at boot, then
+   use commands like:
 
-```text
-WIO SET APP_EUI <16-hex>
-WIO SET DEV_EUI <16-hex>
-WIO SET APP_KEY <32-hex>
-SAVE
-```
+   ```text
+   WIO SET APP_EUI <16-hex>
+   WIO SET DEV_EUI <16-hex>
+   WIO SET APP_KEY <32-hex>
+   ```
 
-(replace placeholders with values from TTN).
+4. Save configuration:
 
-### 2.1 Uplink payload format
+   ```text
+   SAVE
+   ```
 
-In TTN go to **Payload formatters → Uplink → Javascript** and use the following decoder
-for **FPort 8**:
+On next boot the node reads configuration from the EEPROM on the LoRa module,
+joins the network via OTAA and begins periodic uplinks according to the
+firmware configuration (measurement interval, thresholds, etc.).
+
+---
+
+## 3. TTN application & device
+
+1. In **TTN Console**, create an **Application** or use an existing one.
+2. Add a new device (end device) for your node:
+   - LoRaWAN version: **1.0.1**
+   - Regional params: **TS001 v1.0.1**
+   - Frequency plan: **Europe 863‑870 MHz (SF9 for RX2 – recommended)**
+3. Use the **OTAA** credentials (AppEUI, DevEUI, AppKey) you plan to flash
+   into the node (see previous section).
+4. After provisioning, you should be able to see **join requests / joins**
+   and **uplink messages** in the TTN Console once the node starts sending.
+
+---
+
+## 4. Uplink payload formatter (temperature, humidity, CO₂)
+
+The firmware sends a compact binary payload on **FPort 8**:
+
+- Bytes 0–1: temperature × 100 (signed or unsigned, depending on FW)
+- Bytes 2–3: humidity × 100
+- Bytes 4–5: CO₂ in ppm
+
+In the TTN Application **Payload formatters → Uplink**, select
+**“Javascript”** and use:
 
 ```js
 function Decoder(bytes, f_port) {
@@ -89,148 +128,232 @@ function Decoder(bytes, f_port) {
 }
 ```
 
-This produces JSON like:
+In the **Live data** tab you should now see `decoded_payload.temperature`,
+`decoded_payload.humidity` and `decoded_payload.co2` for each uplink.
 
-```json
-{
-  "temperature": 23.5,
-  "humidity": 48.2,
-  "co2": 731
-}
+---
+
+## 5. MQTT access from Home Assistant / Node-RED
+
+Home Assistant (Node-RED add-on) acts as an **MQTT client** and connects to
+the **TTN MQTT broker**. TTN then pushes uplinks over this connection.
+
+### 5.1 Create MQTT credentials in TTN
+
+1. In TTN Console go to your **Application → Integrations → MQTT**.
+2. Create / view your **MQTT connection details**:
+   - **Server**: `eu1.cloud.thethings.network` (for EU1 region)
+   - **Port**: `1883`
+   - **Username**: something like `YOUR_APP_ID@ttn`
+   - **Password**: a TTN **API key**, e.g. `NNSXS.XXXXXXXX...`
+
+> Replace `YOUR_APP_ID` and `NNSXS.XXXXXXXX...` with your own values.  
+> Do not hardcode your real password into public repositories.
+
+### 5.2 Node-RED MQTT configuration
+
+In the **Node-RED add-on** in Home Assistant:
+
+1. Open the Node-RED editor.
+2. Configure an **MQTT broker** node with:
+
+   - **Server**: `eu1.cloud.thethings.network`
+   - **Port**: `1883`
+   - **Protocol**: MQTT v3.1.1
+   - **Username**: `YOUR_APP_ID@ttn`
+   - **Password**: `YOUR_TTN_MQTT_PASSWORD` (API key)
+   - TLS: optional (configure according to TTN docs if you enable it).
+
+3. The example flow subscribes to TTN uplinks using:
+
+   ```text
+   v3/YOUR_APP_ID@ttn/devices/+/up
+   ```
+
+   This pattern matches uplink messages from **all devices** in your
+   application.
+
+   ![NodeRed flow](../../docs/images/lora_nodered_flow.png)
+
+---
+
+## 6. Node-RED flow: `lora_ttn_ha_flow.json`
+
+This repository contains an example Node-RED flow in:
+
+```text
+home_assistant/lora/lora_ttn_ha_flow.json
 ```
 
+Import it into Node-RED (menu → Import → paste JSON). Then adjust:
 
-## 3. MQTT connection from Home Assistant to TTN
+- MQTT broker settings (host, username, password)
+- TTN Application ID (where relevant)
+- Device-specific details if needed
 
-In **Settings → Devices & services → Add integration**, add **MQTT** and point it to TTN:
+### 6.1 What the flow does
 
-- **Broker:** `eu1.cloud.thethings.network`
-- **Port:** `1883`
-- **Protocol:** MQTT v3.1.1
-- **Username / password:** TTN MQTT credentials (for example, `YOUR_APP_ID` /
-  `NNSXS.XXXX...` TTN API key – use your own values here, not these literals)
+The flow consists of three logical parts:
 
-Other options can stay at defaults unless your setup requires something special.
+1. **MQTT input from TTN**  
+   One or more **MQTT in** nodes subscribe to TTN topics, typically:
 
-This makes TTN MQTT traffic available to the **Node-RED add-on**, which uses the same broker settings via its MQTT config node.
+   - `v3/YOUR_APP_ID@ttn/devices/+/up` – for **uplinks**
+   - Optionally `#` – for debugging all traffic
 
+   The payload from TTN is a JSON object (`msg.payload`) with fields such as:
 
-## 4. Node-RED flow (import `lora_ttn_ha_flow.json`)
+   - `uplink_message.decoded_payload.temperature`
+   - `uplink_message.decoded_payload.humidity`
+   - `uplink_message.decoded_payload.co2`
+   - `uplink_message.rx_metadata[0].rssi`
+   - `uplink_message.rx_metadata[0].snr`
+   - `uplink_message.rx_metadata[0].gateway_ids.gateway_id`
+   - `uplink_message.settings.frequency`
+   - etc.
 
-Open the **Node-RED add-on** in Home Assistant:
+2. **Function node: `data parse`**  
+   The function node:
 
-1. Open the menu → **Import**.
-2. Paste or upload the contents of `lora_ttn_ha_flow.json`.
-3. After import, double-click the **MQTT broker config node**  
-   (`eu1.cloud.thethings.network`) and fill in your TTN username/password  
-   (the same values you used in the MQTT integration).
-4. Click **Deploy**.
+   - Accepts both **TTN uplink JSON** and a simple HTTP JSON format
+     (`{ temperature, humidity, co2 }`) for flexibility.
+   - Ignores special packets with `frm_payload === "EQ=="` used by the
+     optional time-sync mechanism.
+   - Extracts and normalizes fields into a local `next` state:
 
-If everything is configured correctly and the node is sending uplinks, the debug nodes
-in the flow will start showing parsed data.
+     - `temperature`
+     - `humidity`
+     - `co2`
+     - `rssi`
+     - `snr`
+     - `frequency`
+     - `spreading_factor`
+     - `bandwidth`
+     - `gateway_id`
+     - `gateway_eui`
+     - `gateway_location` `{ latitude, longitude }`
 
+   - Stores the most recent state in Node-RED **context** so that partial
+     updates keep previous values.
+   - Outputs a simplified `msg.payload` object for Home Assistant:
 
-### 4.1 What the flow does
+     ```json
+     {
+       "temperature": 23.4,
+       "humidity": 42.1,
+       "co2": 650,
+       "rssi": -89,
+       "snr": 7.5,
+       "frequency": 868.3,
+       "gateway_id": "your-gateway-id",
+       "gateway_location": {
+         "latitude": 50.0,
+         "longitude": 14.0
+       }
+     }
+     ```
 
-The flow is split into two logical parts:
+3. **Home Assistant sensors (Node-RED Companion)**  
+   The flow uses `node-red-contrib-home-assistant-websocket` nodes
+   (`ha-sensor`) to publish the parsed values as **Home Assistant entities**.
 
-#### A) Uplink → Home Assistant sensors
+   You should end up with entities like:
 
-Top part of the flow:
-
-- **`MQTT in (#)`**  
-  Subscribes to all TTN topics on the broker.  
-  (You can restrict this later to `v3/<your-app-id>@ttn/devices/+/up`.)
-
-- **`data parse` function node**  
-  Parses the TTN JSON structure, ignoring the special `EQ==` payload used for time
-  synchronisation. It extracts:
-
-  - `temperature`
-  - `humidity`
-  - `co2`
-  - `rssi`
-  - `snr`
-  - `frequency`
-  - `gateway_id`
-  - `gateway_location.latitude`
-  - `gateway_location.longitude`
-
-  and keeps a small internal state so that if some metadata are missing in a specific
-  packet, the last known values are reused instead of being erased.
-
-- **Home Assistant sensor nodes (`ha-sensor`)**  
-  Each value is mapped to a Home Assistant entity via
-  `node-red-contrib-home-assistant-websocket`:
-
-  - `sensor.lora_temperature` (°C)
-  - `sensor.lora_humidity` (%)
-  - `sensor.lora_co2` (ppm)
-  - `sensor.lora_rssi` (dBm)
-  - `sensor.lora_snr` (dB)
-  - `sensor.lora_frequency` (Hz)
-  - `sensor.lora_gateway_id`
-  - `sensor.lora_gateway_latitude`
-  - `sensor.lora_gateway_longitude`
-
-These entities appear under the **“Node-RED Companion”** device in Home Assistant and
-can be added to dashboards just like any other sensor.
-
-#### B) Optional: time synchronisation downlink
-
-The bottom part of the flow provides **automatic RTC time sync** for the node:
-
-- **`MQTT in (v3/.../devices/+/up)`**  
-  Listens for uplinks from the TTN application.
-
-- **`create timestamp` function node**  
-
-  - Checks if the device uplink payload (`frm_payload`) equals the special marker
-    `EQ==`.
-  - If yes, it creates a 4-byte big-endian **UNIX timestamp** (seconds), encodes it
-    as base64, and builds a TTN downlink message on **FPort 8**.
-
-- **`MQTT out (.../down/replace)`**  
-  Publishes the downlink back to TTN.  
-  The node firmware interprets this as “set RTC from the provided UNIX timestamp”.
-
-If you don’t need automatic time synchronisation, you can disable or remove this
-branch of the flow.
-
-
-## 5. Verifying the entities in Home Assistant
-
-After you deploy the flow and let the node send some packets:
-
-1. Go to **Settings → Devices & services → Devices** in Home Assistant.
-2. Open the device called **Node-RED Companion**.
-3. You should see entities similar to:
-
-   - `sensor.lora_co2`  
-   - `sensor.lora_temperature`  
-   - `sensor.lora_humidity`  
-   - `sensor.lora_rssi`  
-   - `sensor.lora_snr`  
-   - `sensor.lora_frequency`  
-   - `sensor.lora_gateway_id`  
-   - `sensor.lora_gateway_latitude`  
+   - `sensor.lora_temperature` (°C)
+   - `sensor.lora_humidity` (%)
+   - `sensor.lora_co2` (ppm)
+   - `sensor.lora_rssi` (dBm)
+   - `sensor.lora_snr` (dB)
+   - `sensor.lora_frequency` (Hz)
+   - `sensor.lora_gateway_latitude`
    - `sensor.lora_gateway_longitude`
+   - `sensor.lora_gateway_id`
 
-4. Use these entities in a dashboard – for example the “LoRa Dashboard” view that
-   is used elsewhere in this project (gauge for CO₂, line graphs, etc.).
+   In Home Assistant, these will appear under a device such as
+   **“Node-RED”** or **“Node-RED Companion”**, depending on how you
+   configured the integration.
 
+---
 
-## 6. Customization notes
+## 7. Optional: time synchronization via TTN downlink
 
-- You can safely restrict the MQTT input topic from `#` to:
+The flow also contains an **optional** part that demonstrates how to use
+TTN downlinks to synchronize the node's **RTC (Real-Time Clock)**:
+
+- The node sends a special uplink with `frm_payload === "EQ=="` to request
+  time.
+- A Node-RED function node (`create timestamp`) listens to
 
   ```text
-  v3/<your-app-id>@ttn/devices/+/up
+  v3/YOUR_APP_ID@ttn/devices/+/up
   ```
 
-- If you change the TTN **uplink decoder**, keep the JSON field names
-  (`temperature`, `humidity`, `co2`) or update the `data parse` function accordingly.
-- Entity names (`sensor.lora_*`) are defined in the Home Assistant entity config
-  nodes and can be adapted to your own naming scheme.
-- The flow is just an example – feel free to extend it with additional metrics,
-  alerts, statistics or automations.
+  and, when it sees that special payload, generates a 4-byte UNIX timestamp.
+
+- The timestamp is encoded as base64 and sent back as a downlink using an
+  MQTT topic of the form:
+
+  ```text
+  v3/YOUR_APP_ID@ttn/devices/YOUR_DEVICE_ID/down/replace
+  ```
+
+- The LocuSense node receives the downlink on the configured FPort and
+  updates its internal RTC.
+
+This mechanism is optional but useful if you want the node’s clock to be
+synchronized without NTP or other external time sources.
+
+---
+
+## 8. Home Assistant: visualizing LoRa data
+
+Once the flow is deployed and the node is active, you should see new
+entities in **Home Assistant → Settings → Devices & Services → Devices**,
+under the Node-RED device (or similar).
+
+Typical entities:
+
+- `sensor.lora_temperature`
+- `sensor.lora_humidity`
+- `sensor.lora_co2`
+- `sensor.lora_rssi`
+- `sensor.lora_snr`
+- `sensor.lora_frequency`
+- `sensor.lora_gateway_latitude`
+- `sensor.lora_gateway_longitude`
+- `sensor.lora_gateway_id`
+
+![Matter device](../../docs/images/ha_lora_entities.png)
+
+You can then build a Lovelace dashboard view similar to the example used for
+the Matter/Thread device, for example:
+
+- line graphs for temperature / humidity / CO₂
+- a gauge for CO₂ (e.g. 350–2500 ppm range)
+- tiles showing RSSI/SNR and gateway information
+
+If you keep both Matter and LoRa integrations in the same Home Assistant
+instance, you can create a separate **“Lora”** view and compare both data
+paths on one dashboard.
+
+---
+
+## 9. Tips & troubleshooting
+
+- If you see uplinks in TTN but nothing in Node-RED:
+  - check the MQTT credentials (username / API key)
+  - verify the MQTT server: `eu1.cloud.thethings.network:1883`
+  - make sure the MQTT in node subscribes to
+    `v3/YOUR_APP_ID@ttn/devices/+/up`.
+- If Node-RED receives messages but Home Assistant shows no entities:
+  - open Node-RED debug nodes to see parsed payloads
+  - check the Home Assistant server configuration in the
+    `node-red-contrib-home-assistant-websocket` nodes
+  - confirm that the Node-RED add-on has access to Home Assistant's WebSocket
+    API.
+- If CO₂, temperature or humidity appear as `0` or `null`:
+  - verify the TTN payload formatter
+  - check that the node really sends the payload on **FPort 8**.
+
+With this setup you get a complete LoRaWAN → TTN → MQTT → Node-RED →
+Home Assistant pipeline, fully integrated into your LocuSense ecosystem.
