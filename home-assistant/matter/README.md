@@ -6,6 +6,12 @@ history, InfluxDB and Grafana visualization.
 
 > ℹ️ LoRaWAN / TTN integration is documented separately in the LoRa firmware README.
 
+LocuSense supports **two mutually exclusive communication stacks** (Matter over Thread or
+LoRaWAN). Use this guide for the ESP32-C6 / Thread workflow and the
+[Home Assistant LoRaWAN guide](../lora/README.md) when you need the
+**Wio-E5 → TTN → MQTT → Node-RED** path. Both approaches share the same sensing platform,
+so you can migrate between them as your deployment evolves.
+
 
 ---
 
@@ -17,6 +23,8 @@ You will need:
 - **Home Assistant Connect ZBT-1** (or equivalent Thread border router) properly set up.
 - The LocuSense node configured as a **Matter over Thread environmental sensor**
   (ESP32-C6 firmware flashed and working).
+- Firmware console `CONFIG → COMMS` set to **`COMMS_MATTER`** (or `COMMS_THREAD`)
+  so that the STM32 side speaks to the ESP32-C6 co-processor.
 - Optional but recommended:
   - **InfluxDB** add-on (for long-term storage)
   - **Grafana** add-on (for nice charts, embedded into Home Assistant)
@@ -54,6 +62,8 @@ CO₂, temperature, humidity, air quality and dual-battery monitoring.
    Typically you will either:
    - Scan a **Matter QR code** shown on the E-Ink display / label, or  
    - Use a **numeric setup code**.
+   - In the STM32 console you can confirm radio selection with `INFO COMMS`
+     before attempting commissioning.
 
 2. In Home Assistant, go to:
 

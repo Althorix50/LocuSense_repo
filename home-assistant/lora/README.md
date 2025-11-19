@@ -20,6 +20,10 @@ Node → LoRa → Gateway → TTN → MQTT → Node-RED → Home Assistant
 > ⚠️ This README only covers the **LoRaWAN path**. Matter/Thread and the ESP32‑C6
 > firmware are documented separately in the Matter README.
 
+
+
+If you decide to run the **Matter over Thread** workflow instead, jump to the [Home Assistant Matter guide](../matter/README.md) which covers ESP32-C6 commissioning, Thread network setup and dashboard examples that complement the LoRaWAN flow described here.
+
 ---
 
 ## 1. Requirements
@@ -40,6 +44,14 @@ On the LoRaWAN side this example has been tested with:
 - **LoRaWAN version**: `LoRaWAN 1.0.1`
 - **Regional Parameters version**: `TS001 1.0.1`
 
+### Firmware / console checklist
+
+- Flash the **STM32 LoRaWAN build** and select `COMMS_LORA` in the `CONFIG` menu.
+- Run `INFO COMMS` / `STATUS RADIO` in the console to verify that the board reports the
+  Wio-E5 module and that the ESP32-C6 interface is disabled.
+- Optional sanity check: `WIO INFO` echoes the current App/Dev EUIs and confirms the module
+  responds before you move on to TTN provisioning.
+
 ---
 
 ## 2. Configure the LocuSense node (OTAA)
@@ -50,6 +62,9 @@ values from TTN:
 - `AppEUI` (a.k.a. `JoinEUI`) – 16 hex characters
 - `DevEUI` – 16 hex characters
 - `AppKey` – 32 hex characters
+
+> Make sure the firmware is in **`COMMS_LORA`** mode (see the STM32 console
+> `CONFIG` menu) so that the LoRaWAN stack is active before you proceed.
 
 These are **stored in the LoRa communication module EEPROM** and configured
 via the node's configuration console.
@@ -74,6 +89,8 @@ via the node's configuration console.
    ```text
    SAVE
    ```
+
+A quick WIO INFO printout should now show the newly stored OTAA keys. If you want to test connectivity before deploying, you can issue a manual WIO JOIN and watch the join status both in the console and in the TTN Application event log.
 
 On next boot the node reads configuration from the EEPROM on the LoRa module,
 joins the network via OTAA and begins periodic uplinks according to the
