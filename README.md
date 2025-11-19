@@ -85,6 +85,9 @@ on your side.
 - Data flow options:
   - **Matter over Thread (ESP32-C6)** – native Matter device
   - **LoRaWAN via TTN → (MQTT → Node-RED → Home Assistant)** - in my example
+- For detailed Home Assistant walkthroughs see:
+  - [Matter over Thread integration guide](home-assistant/matter/README.md) – commissioning, dashboard YAML, InfluxDB / Grafana embedding.
+  - [LoRaWAN → MQTT → Node-RED → Home Assistant guide](home-assistant/lora/README.md) – TTN setup, payload decoding, Node-RED flows and dashboards.
 
 ### Data storage & analytics
 
