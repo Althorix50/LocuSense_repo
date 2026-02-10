@@ -10,9 +10,8 @@ communication modules**:
 A 2.13" e-ink display shows current air quality and device status. It can be safely omitted in
 long-life, headless deployments where every µA matters.
 
-![LocuSense node with e-ink display](docs/images/locusense_hw.jpg)
+![LocuSense node with e-ink display](docs/images/locusense_case.jpg)
 ---
-
 
 ## Features
 
@@ -79,7 +78,7 @@ on your side.
 
 ### Home Assistant integration
 
-- **Home Assistant Green + SkyConnect configured for Thread** (used in development)
+- **Home Assistant Green + Home Assistant Connect ZBT-1/ZBT-2 configured for Thread** (used in development)
   - LocuSense appears as a Matter device with multiple sensors and power sources
   - Ready-to-use HA dashboard configuration included
 - Data flow options:
@@ -173,12 +172,15 @@ Current top-level layout:
 
 ```text
 .
-├─ docs/
-│  └─ images/            # Photos and screenshots used in the README
-├─ firmware/
-│  ├─ esp32c6/           # ESP-Matter (Thread) bridge
-│  └─ stm32/             # STM32U0 application, GUI, and drivers
-└─ README.md
+├── .vscode/                   # Editor tasks/snippets
+├── docs/
+│   └── images/                # Photos and screenshots used in the README
+├── firmware/
+│   ├── esp32c6/               # ESP-Matter (Thread) bridge
+│   └── stm32/                 # STM32U0 application, GUI, and drivers
+├── hardware/                  # Altium Designer sources, and PCB outputs
+├── home-assistant/            # HA dashboards, TTN/Node-RED helpers, Matter guide
+└── README.md
 ```
 
 Each firmware directory also ships with its own README that dives into the UART protocol,
@@ -398,18 +400,21 @@ while the TTN payload decoder lives alongside the Home Assistant YAML under [`ho
 With the ESP32-C6 module populated and `comms_mode = COMMS_MATTER`, the device acts as a
 **Matter over Thread sleepy end device**:
 
-- Tested with **Home Assistant Green + SkyConnect** (SkyConnect configured as Thread border router).
+- Tested with **Home Assistant Green + Home Assistant Connect ZBT-1/ZBT-2** (configured as Thread border router).
 - Exposes:
   - Temperature, humidity, air quality (from CO₂)
   - CO₂ concentration cluster (0x040D, MEA)
   - Power Source info for USB, Li-Ion and LiSOCl₂
 
-Pairing workflow:
+Pairing workflow: use the quick steps below, or jump to the detailed guide.
 
-1. Enter CONFIG mode and run `ESP COMM START` **or** `ESP QR` in the console.  
-   The device prints the **QR and manual pairing code** and also draws the QR on the e-ink display.
-2. In Home Assistant, add a new **Matter** device and scan the QR code.
-3. After commissioning, all sensors appear in HA; you can then import the example dashboard.
+Quick steps (Home Assistant / Google Nest Hub):
+
+1. Enter the console by holding the button for ~5 s.
+2. If the device was paired to another fabric, check `ESP FABRICS`; recommended: run `ESP FACTORYRESET` (factory-reset the ESP32-C6, clears fabrics/commissioning info).
+3. Run `ESP COMM START`.
+4. Finish commissioning by pairing the device via the QR code in your controller.
+5. After commissioning completes, type `EXIT`.
 
 For a step-by-step walkthrough (Thread network prep, dashboards, Grafana embedding), see
 [`home-assistant/matter/README.md`](home-assistant/matter/README.md).
@@ -423,6 +428,9 @@ support for some clusters (especially custom CO₂ cluster and power source deta
 limited on current Nest firmware. Standard temperature / humidity / air quality should be
 usable, but cluster coverage may vary between ecosystems.
 
+> **Note for Nest:** Google’s Matter guidance for Thread SED/SSED devices calls for **≤3 s sleep** to keep service parity; longer poll cycles can make the device appear offline in Google Home Graph. Home Assistant tolerates longer intervals, but if you target Nest favor the SIT ICD preset (fast/slow poll 0.5/5 s) instead of the LIT profile.
+See the ICD preset tables and interval descriptions in `firmware/esp32c6/README.md` for how to switch between SIT/LIT in `sdkconfig`.
+
 ---
 
 ## Building & flashing
@@ -434,10 +442,6 @@ usable, but cluster coverage may vary between ecosystems.
   - `firmware/stm32/app/app.c` – main state machine (INIT → MEASURE → BAT_MEASURE → SEND_DATA → ...)
   - `firmware/stm32/app/GUI.c` – e-ink GUI
   - `firmware/stm32/app/conf_console.c` – UART config console
-- Make sure to configure:
-  - Correct RTC source (LSE)
-  - LPTIM2 for 10 s VOC ticks (if VOC is enabled)
-  - GPIO sleep configuration (keep pins list in `app.c`)
 
 ### ESP32-C6 firmware (Matter)
 

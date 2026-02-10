@@ -32,7 +32,7 @@ Prerequisites
 -------------
 - ESP-IDF with esp-matter support (v5.2 or v5.3 are known-good).
 - A serial/JTAG adapter wired to `UART1` pins and access to the WAKE/READY GPIOs.
-- A Thread border router in your test environment (Home Assistant + SkyConnect works well).
+- A Thread border router in your test environment (Home Assistant + Home Assistant Connect ZBT-1/ZBT-2 works well).
 
 Thread SED & light-sleep behavior
 ---------------------------------
@@ -43,6 +43,46 @@ Thread SED & light-sleep behavior
   - The UART task raises `READY`, acquires a PM lock (`esp_pm_lock_acquire()`), drains the line, processes the incoming `DATA`/command line, and only then releases the lock and lowers `READY`.
   - As soon as `READY` falls and no further work is pending, the ESP32 returns to light sleep until the next Thread poll or WAKE event.
 - Commissioning and other Matter tasks can also keep the chip awake temporarily; once those tasks finish, the default behavior is to sleep again unless the STM32 keeps the link busy.
+
+ICD presets in `sdkconfig`
+--------------------------
+This SED follows the esp-matter ICD example profiles (`examples/icd_app`) so you can pick between Short Idle Time (SIT) and Long Idle Time (LIT) behavior by selecting a preset `sdkconfig.defaults.*` file before regenerating `sdkconfig`.
+
+**Default SIT profile (current `sdkconfig.defaults`):**
+
+| Parameter | Value |
+| --- | --- |
+| ICD Fast Polling Interval | 500 ms |
+| ICD Slow Polling Interval | 3000 ms |
+| ICD Active Mode Duration | 1000 ms |
+| ICD Idle Mode Duration | 60 s |
+| ICD Active Mode Threshold | 1000 ms |
+
+**Optional LIT profile (`sdkconfig.defaults.esp32c6.lit` or `.esp32h2.lit`):**
+
+| Parameter | Value |
+| --- | --- |
+| ICD Fast Polling Interval | 500 ms |
+| ICD Slow Polling Interval | 20000 ms |
+| ICD Active Mode Duration | 1000 ms |
+| ICD Idle Mode Duration | 600 s |
+| ICD Active Mode Threshold | 5000 ms |
+
+Pick the preset that matches your responsiveness vs. power target, then run `idf.py set-target esp32c6` followed by `idf.py reconfigure` to apply the chosen defaults. SIT gives snappier reaction to new data at the cost of more parent polls; LIT stretches the idle window and slow poll interval for lower average current on battery.
+
+> Nest compatibility: Google wants Thread SED/SSED devices to keep sleep intervals <= 3 s to avoid being shown offline. Use the SIT preset (slow poll 3000 ms) for Nest Hub; LIT’s 20 s slow poll is too long for Google’s limits but fine for Home Assistant.
+
+What each interval does:
+- Fast Polling Interval: how often the SED asks its parent for pending data while it considers itself active (short, responsive window).
+- Slow Polling Interval: how often it polls in idle mode (dominant factor for average current).
+- Active Mode Duration: how long the device stays in the fast-poll state after activity such as UART traffic or a Matter event.
+- Idle Mode Duration: how long the device remains in idle before considering a re-entry to active mode.
+- Active Mode Threshold: minimum elapsed time between fast-poll periods; shorter values bias toward responsiveness, longer values bias toward lower current.
+
+Estimated current draw (ESP32-C6 module only, no radio TX):
+- SIT preset: ~0.25-0.35 mA average in steady idle (Thread polls every 5 s, brief wake bursts).
+- LIT preset: ~0.10-0.15 mA average in steady idle (20 s slow polls dominate).
+- Active UART window or commissioning: 8-15 mA while the CPU stays awake; Thread TX/RX spikes add short peaks. The STM32 and sensors add on top of these numbers.
 
 UART text protocol
 ------------------

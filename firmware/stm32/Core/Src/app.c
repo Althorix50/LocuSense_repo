@@ -69,6 +69,10 @@ static const PowerSwitch_t PS_EINK    = { PS4_GPIO_Port, PS4_Pin };
 #define PS_ON(ps)  HAL_GPIO_WritePin((ps).port, (ps).pin, GPIO_PIN_SET)
 #define PS_OFF(ps) HAL_GPIO_WritePin((ps).port, (ps).pin, GPIO_PIN_RESET)
 
+/* I2C isolation helpers (defined later) */
+static void I2C_Bus_Release_For_PowerOff(void);
+static void I2C_Bus_Restore_For_PowerOn(void);
+
 /* Pins to keep active during sleep (everything else -> Analog/High-Z) */
 static const KeepPin KEEP_PINS[] = {
     { USB_ON_GPIO_Port, USB_ON_Pin },
@@ -76,12 +80,12 @@ static const KeepPin KEEP_PINS[] = {
     { RF_TX_GPIO_Port, RF_TX_Pin },
 	{ RF_RX_GPIO_Port, RF_RX_Pin },
     { RF_RST_GPIO_Port, RF_RST_Pin },
-    { RF_GPIO1_GPIO_Port, RF_GPIO1_Pin },
 	{ RF_GPIO1_GPIO_Port, RF_GPIO1_Pin }, // ESP_WAKE pin
 	{ RF_GPIO2_GPIO_Port, RF_GPIO2_Pin }, // ESP_READY pin
     { PS2_GPIO_Port, PS2_Pin }, /* RF rail */
     { GPIOA, GPIO_PIN_13 }, // SWDIO (disable in production)
     { GPIOA, GPIO_PIN_14 }, // SWCLK
+	{ PULL_CNTR_GPIO_Port, PULL_CNTR_Pin},
 };
 
 /* ---------------- Logging helpers ---------------- */
@@ -195,9 +199,13 @@ void App_Config_SaveToEeprom(void)
     /* Here you can control sensor power rails / pull-ups
        if the EEPROM shares power with PS_SENSORS or similar. */
 
+	PS_ON(PS_RF);
+	HAL_Delay(200);
+
     GPIO_PinState prev_pull = HAL_GPIO_ReadPin(PULL_CNTR_GPIO_Port, PULL_CNTR_Pin);
     HAL_GPIO_WritePin(PULL_CNTR_GPIO_Port, PULL_CNTR_Pin, GPIO_PIN_RESET); // enable pull-ups
     PS_ON(PS_SENSORS);
+    I2C_Bus_Restore_For_PowerOn();
     HAL_Delay(2);
 
     HAL_StatusTypeDef st = EE_Config_Save(&hi2c1, &app.cfg, &g_wio, &g_esp.pairing);
@@ -209,6 +217,8 @@ void App_Config_SaveToEeprom(void)
     } else {
         LOGE("EEPROM: save failed");
     }
+
+    if (app.cfg.commsMode == COMMS_OFFLINE) PS_OFF(PS_RF);
 }
 
 /* ======================= State prototypes ======================= */
@@ -259,6 +269,39 @@ static const char* App_StateName(SystemState_t s) {
 static inline uint32_t sod_now(void) { return RTC_GetSecondsOfDay(); }
 static inline uint32_t sod_diff(uint32_t now, uint32_t then) {
     return (then == 0U) ? 0xFFFFFFFFU : (now >= then ? (now - then) : (now + 86400U - then));
+}
+
+/* I2C bus isolation helpers: deinit + set pins analog to avoid back-powering. */
+static uint8_t s_i2c_forced_analog = 0;
+
+static void I2C_Bus_Release_For_PowerOff(void)
+{
+    if (s_i2c_forced_analog) return;
+    HAL_I2C_DeInit(&hi2c1);
+
+    GPIO_InitTypeDef gi = {0};
+    gi.Mode  = GPIO_MODE_ANALOG;
+    gi.Pull  = GPIO_NOPULL;
+    gi.Speed = GPIO_SPEED_FREQ_LOW;
+
+    if (SCL_GPIO_Port == SDA_GPIO_Port) {
+        gi.Pin = SCL_Pin | SDA_Pin;
+        HAL_GPIO_Init(SCL_GPIO_Port, &gi);
+    } else {
+        gi.Pin = SCL_Pin;
+        HAL_GPIO_Init(SCL_GPIO_Port, &gi);
+        gi.Pin = SDA_Pin;
+        HAL_GPIO_Init(SDA_GPIO_Port, &gi);
+    }
+
+    s_i2c_forced_analog = 1;
+}
+
+static void I2C_Bus_Restore_For_PowerOn(void)
+{
+    if (!s_i2c_forced_analog) return;
+    MX_I2C1_Init();
+    s_i2c_forced_analog = 0;
 }
 
 /* ======================= TX policy ======================= */
@@ -462,7 +505,27 @@ void App_Init(void)
 {
     app.confFlag = 0;
 
-    if (app.wakeUpFlag) {
+
+    if(app.boot_done == 0)
+    {
+		EPD_BootDetect();
+		app.usb_on = (HAL_GPIO_ReadPin(USB_ON_GPIO_Port, USB_ON_Pin) == GPIO_PIN_SET);
+
+		if (app.epd_link == EPD_LINK_CONNECTED) {
+			EPD_PowerOn();
+			HAL_Delay(500);
+			LOGI("GUI: init");
+			GUI_Init();
+			if(app.usb_on)
+			GUI_UpdateState(app.currentState);
+			EPD_PowerOff();
+		} else {
+			LOGW("E-Ink disconnected -> skipping GUI init");
+		}
+    }
+
+
+    if (app.wakeUpFlag && app.boot_done == 1) {
         /* Re-init path after STOP2 */
         app.wakeUpFlag = 0;
         RTC_UpdateTimeData();
@@ -477,18 +540,24 @@ void App_Init(void)
         HAL_I2C_DeInit(&hi2c1);   MX_I2C1_Init();
         HAL_ADC_DeInit(&hadc1);   MX_ADC1_Init();
 
-        app.usb_on = (HAL_GPIO_ReadPin(USB_ON_GPIO_Port, USB_ON_Pin) == GPIO_PIN_SET);
+		EPD_BootDetect();
+		app.usb_on = (HAL_GPIO_ReadPin(USB_ON_GPIO_Port, USB_ON_Pin) == GPIO_PIN_SET);
+
+		if (app.epd_link == EPD_LINK_CONNECTED && app.usb_on) {
+			EPD_PowerOn();
+			HAL_Delay(100);
+	        if (!GUI_IsCanvasReady()) {
+	            GUI_Init();
+	        }
+			GUI_UpdateState(app.currentState);
+			EPD_PowerOff();
+		} else {
+			LOGW("E-Ink disconnected -> skipping GUI update");
+		}
 
         LOGB("WAKE-UP");
         LOGI("Wake-up path complete (clocks/peripherals re-initialized)");
 
-
-        if ((app.epd_link == EPD_LINK_CONNECTED) && app.usb_on)
-        {
-				EPD_PowerOn();
-				GUI_UpdateState(app.currentState);
-				EPD_PowerOff();
-		}
         return;
     }
 
@@ -514,13 +583,12 @@ void App_Init(void)
     gi.Pull = GPIO_PULLDOWN;   // or GPIO_NOPULL depending on HW
     HAL_GPIO_Init(GPIOC, &gi);
 
-    app.usb_on = (HAL_GPIO_ReadPin(USB_ON_GPIO_Port, USB_ON_Pin) == GPIO_PIN_SET);
-
     /* ---- EEPROM: load config + LoRa + ESP pairing ---- */
     if (!app.cfg_loaded) {
         GPIO_PinState prev_pull = HAL_GPIO_ReadPin(PULL_CNTR_GPIO_Port, PULL_CNTR_Pin);
         HAL_GPIO_WritePin(PULL_CNTR_GPIO_Port, PULL_CNTR_Pin, GPIO_PIN_RESET); // I2C pull-ups ON
         PS_ON(PS_SENSORS);
+        I2C_Bus_Restore_For_PowerOn();
         PS_ON(PS_RF);
         HAL_Delay(20);
 
@@ -538,23 +606,14 @@ void App_Init(void)
     LOGI("Config: measure=%d voc=%d comms=%d",
          (int)app.cfg.measureMode, (int)app.cfg.vocMode, (int)app.cfg.commsMode);
 
-    EPD_BootDetect();
-
-    if (app.epd_link == EPD_LINK_CONNECTED) {
-        EPD_PowerOn();
-        LOGI("GUI: init");
-        GUI_Init();
-        if(app.usb_on) GUI_UpdateState(app.currentState);
-        EPD_PowerOff();
-    } else {
-        LOGW("E-Ink disconnected -> skipping GUI init");
-    }
-
     /* === Radio init according to comms mode === */
     if (app.cfg.commsMode == COMMS_MATTER) {
         /* ESP/Matter: do not start WioE5; only prepare ESP */
         PS_ON(PS_RF);
         ESP_Init();
+        HAL_Delay(20);
+        ESP_ResetPulse();
+        HAL_Delay(200);
         LOGI("ESP init: PS_RF ON, READY=input PD, WAKE=LOW");
     } else if (app.cfg.commsMode == COMMS_LORA) {
         /* LoRa: start WioE5 + OTAA join */
@@ -668,6 +727,9 @@ void App_Run(void)
     /* Short GUI status (state line + VOC partials) */
     if ((app.epd_link == EPD_LINK_CONNECTED) && app.usb_on) {
         EPD_PowerOn();
+        if (!GUI_IsCanvasReady()) {
+            GUI_Init();
+        }
         GUI_UpdateState(app.currentState);
 
         if (!VOC_Active()) {
@@ -717,6 +779,7 @@ static void State_Measure(void)
 
     PS_ON(PS_SENSORS); HAL_Delay(5);
     HAL_GPIO_WritePin(PULL_CNTR_GPIO_Port, PULL_CNTR_Pin, GPIO_PIN_RESET); HAL_Delay(2);
+    I2C_Bus_Restore_For_PowerOn();
 
     LOGI("Measuring values (%s)...", app.cfg.measureMode == MEAS_CO2_TRH ? "CO2+T+RH" : "T+RH only");
 
@@ -753,6 +816,7 @@ static void State_Measure(void)
 
     if (!VOC_Active()) {
         HAL_GPIO_WritePin(PULL_CNTR_GPIO_Port, PULL_CNTR_Pin, GPIO_PIN_SET); // disable pull-ups only if not in VOC
+        I2C_Bus_Release_For_PowerOff();
         PS_OFF(PS_SENSORS);                                                  // power off sensors rail only if not in VOC
     } else {
         LOGI("VOC active -> keep sensor rail + I2C pull-ups ON");
@@ -917,7 +981,7 @@ static void State_Recover(void)
 {
     /* ESP (Matter) – if repeated failures, try HW reset */
     if (app.cfg.commsMode == COMMS_MATTER) {
-        if (app.espFailCount >= 3)
+        if (app.espFailCount >= 5)
         {
         	app.Connected = 0;
             LOGW("ESP recover: %u consecutive TX fails -> HW reset", app.espFailCount);
@@ -1064,7 +1128,12 @@ static void State_Sleep(void)
     }
 
     HAL_GPIO_WritePin(PULL_CNTR_GPIO_Port, PULL_CNTR_Pin, GPIO_PIN_SET);
+    I2C_Bus_Release_For_PowerOff();
     PS_OFF(PS_SENSORS);
+
+    if (!app.usb_on) {
+        BQ25185_GPIO_Config(0);
+    }
 
     if (app.epd_link == EPD_LINK_CONNECTED) {
         EPD_PowerOff();
@@ -1102,6 +1171,7 @@ static void State_Recalib(void)
 {
     PS_ON(PS_SENSORS); HAL_Delay(10);
     HAL_GPIO_WritePin(PULL_CNTR_GPIO_Port, PULL_CNTR_Pin, GPIO_PIN_RESET); HAL_Delay(2);
+    I2C_Bus_Restore_For_PowerOn();
     SCD41_WakeUp(&hi2c1); HAL_Delay(30);
 
     if (app.epd_link == EPD_LINK_CONNECTED) {
@@ -1119,6 +1189,7 @@ static void State_Recalib(void)
 
     app.recalibFlag = 0;
     HAL_GPIO_WritePin(PULL_CNTR_GPIO_Port, PULL_CNTR_Pin, GPIO_PIN_SET);
+    I2C_Bus_Release_For_PowerOff();
     PS_OFF(PS_SENSORS);
 
     LOGI("Recalibration done");
@@ -1150,6 +1221,9 @@ static void State_Config(void)
     if (!started) {
         /* --- one-time entry --- */
         LOGB("CONFIG ENTER");
+
+        PS_ON(PS_RF);
+        HAL_Delay(200);
 
         /* Stop VOC + sensors and optionally put radio back to idle */
         if (app.voc_running) {
@@ -1196,11 +1270,13 @@ static void State_Config(void)
 
         ConfConsole_Stop();
 
-        if (app.epd_link == EPD_LINK_CONNECTED) {
-            EPD_PowerOn();
-            GUI_Init();
-            EPD_PowerOff();
-        }
+//        if (app.epd_link == EPD_LINK_CONNECTED) {
+//            EPD_PowerOn();
+//            GUI_Init();
+//            EPD_PowerOff();
+//        }
+//
+//        if (app.cfg.commsMode == COMMS_OFFLINE) PS_OFF(PS_RF);
 
         /* Return to a "clean" state */
         app.boot_done      = 0;
@@ -1236,6 +1312,7 @@ static void VOC_Mode_Ensure(void)
             VOC_LPTIM_Stop();
             voc_algo_inited = 0;
             HAL_GPIO_WritePin(PULL_CNTR_GPIO_Port, PULL_CNTR_Pin, GPIO_PIN_SET);
+            I2C_Bus_Release_For_PowerOff();
             PS_OFF(PS_SENSORS);
             if (app.epd_link == EPD_LINK_CONNECTED) {
                 EPD_PowerOff();
@@ -1253,6 +1330,7 @@ static void VOC_Mode_Ensure(void)
         /* Keep sensors rail and I2C pull-ups on while VOC runs */
         PS_ON(PS_SENSORS);
         HAL_GPIO_WritePin(PULL_CNTR_GPIO_Port, PULL_CNTR_Pin, GPIO_PIN_RESET);
+        I2C_Bus_Restore_For_PowerOn();
 
         /* VOC algorithm @ 10 s interval */
         GasIndexAlgorithm_init_with_sampling_interval(
@@ -1272,6 +1350,7 @@ static void VOC_Mode_Ensure(void)
         voc_algo_inited = 0;
 
         HAL_GPIO_WritePin(PULL_CNTR_GPIO_Port, PULL_CNTR_Pin, GPIO_PIN_SET);
+        I2C_Bus_Release_For_PowerOff();
         PS_OFF(PS_SENSORS);
         if (app.epd_link == EPD_LINK_CONNECTED) {
             EPD_PowerOff();
@@ -1328,9 +1407,16 @@ static void VOC_LPTIM_Stop(void)
  * Power up E-Ink rail and SPI, initialize panel driver, and notify GUI
  * that the display has been resumed (for partial updates / cache).
  */
+static void EPD_WaitPowerStable(void)
+{
+    uint32_t delay_ms = 200;
+    HAL_Delay(delay_ms);
+}
+
 static void EPD_PowerOn(void)
 {
-    PS_ON(PS_EINK); HAL_Delay(100);
+    PS_ON(PS_EINK);
+    EPD_WaitPowerStable();
     MX_SPI1_Init();
     EPD_Pins_Init();
     DEV_Module_Init();
@@ -1383,16 +1469,27 @@ static void EPD_BootDetect(void)
         return;
     }
 
-    PS_ON(PS_EINK);
-    HAL_Delay(100);
-    MX_SPI1_Init();
-    EPD_Pins_Init();
-    DEV_Module_Init();
-    HAL_Delay(10);
+    uint8_t ok = 0;
+    uint32_t timeout_ms = app.usb_on ? 2000U : 5000U;
 
-    if (!EPD_2in13_V4_BootDetect(1500)) {
-        app.epd_link = EPD_LINK_DISCONNECTED;
-        LOGW("E-Ink not responding -> DISCONNECTED (boot probe)");
+    for (int attempt = 0; attempt < 2 && !ok; ++attempt) {
+        PS_ON(PS_EINK);
+        EPD_WaitPowerStable();
+        MX_SPI1_Init();
+        EPD_Pins_Init();
+        HAL_Delay(20);
+        DEV_Module_Init();
+        HAL_Delay(20);
+
+        ok = EPD_2in13_V4_BootDetect(timeout_ms);
+        if (!ok) {
+            EPD_PowerOff();
+            HAL_Delay(300);
+        }
+    }
+
+    if (!ok) {
+        LOGW("E-Ink not responding during boot probe (will retry later)");
     } else {
         LOGI("E-Ink present (boot probe OK)");
     }
@@ -1451,7 +1548,6 @@ void HAL_LPTIM_AutoReloadMatchCallback(LPTIM_HandleTypeDef *hlptim)
 {
     if (hlptim->Instance != LPTIM2) return;
 
-    LOGI("LPTIM2 IRQ");
     if (app.voc_running && voc_algo_inited) {
         const uint16_t raw = app.voc_last_raw; /* 16-bit read is atomic on CM0+ */
         int32_t voc_idx32 = 0;

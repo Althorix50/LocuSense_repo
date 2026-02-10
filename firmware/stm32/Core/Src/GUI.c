@@ -30,12 +30,18 @@
 #include "images.h"
 
 #include "qrcodegen.h"
+#include "Debug.h"
 
 extern AppContext_t app;   /* from app.c */
 
 static UBYTE *BlackImage = NULL;
 
 static uint8_t s_partial_base_valid = 0;
+
+uint8_t GUI_IsCanvasReady(void)
+{
+    return (BlackImage != NULL && Paint.Width != 0 && Paint.Height != 0) ? 1U : 0U;
+}
 
 /**
  * @brief Ensure the e-paper controller has an "old image" for partial refreshes.
@@ -61,7 +67,9 @@ static inline UWORD TextHeight(const sFONT* font) {
 }
 static void DrawRightAligned(UWORD rightX, UWORD y, const char* s, const sFONT* font, UWORD bg, UWORD fg) {
     UWORD w = TextWidth(font, s);
-    Paint_DrawString_EN(rightX - w, y, (char*)s, (sFONT*)font, bg, fg);
+    /* Clamp to avoid unsigned underflow when the string is wider than rightX. */
+    UWORD startX = (w > rightX) ? 0 : (rightX - w);
+    Paint_DrawString_EN(startX, y, (char*)s, (sFONT*)font, bg, fg);
 }
 static void FormatInterval(char* out, size_t n, uint32_t secs) {
     uint32_t h = secs / 3600U;
@@ -125,6 +133,7 @@ void GUI_Init(void)
     BlackImage = (UBYTE *)malloc(ImageSize);
     if (BlackImage == NULL) {
         printf("Failed to allocate memory for e-Paper buffer.\r\n");
+        Paint.Width = Paint.Height = 0;
         return;
     }
 
@@ -184,26 +193,38 @@ void GUI_Display(void)
     Paint_Clear(WHITE);
 
     /* Header */
-    if (app.Connected)
-        Paint_DrawBitMap_Paste(gImage_CommOK, 10, 0, 20, 20, 0);
-    else
-        Paint_DrawBitMap_Paste(gImage_CommNo, 10, 0, 20, 20, 0);
+    if(app.cfg.commsMode == COMMS_MATTER)
+    {
+    	if (app.Connected)
+    		Paint_DrawBitMap_Paste(gImage_ThreadOK, 5, 0, 40, 20, 0);
+    	else
+    		Paint_DrawBitMap_Paste(gImage_ThreadNot, 5, 0, 40, 20, 0);
+    }
+
+    if(app.cfg.commsMode == COMMS_LORA)
+    {
+    	if (app.Connected)
+    		Paint_DrawBitMap_Paste(gImage_LoraOK, 5, 0, 40, 20, 0);
+    	else
+    		Paint_DrawBitMap_Paste(gImage_LoraNot, 5, 0, 40, 20, 0);
+    }
 
     UWORD left_limit  = 10 + 20 + 4;
 
-    char day_time[25];
+    char day_time[25] = "";
+    UWORD time_w = 0;
 
     if(app.time_sync_ok)
     {
-    snprintf(day_time, sizeof(day_time),
-             "%02u.%02u %02u:%02u:%02u",
-             g_timeData.day, g_timeData.month,
-             g_timeData.hour, g_timeData.minute, g_timeData.second);
-    DrawRightAligned(CW - MARGIN_X, HEADER_Y + 2, day_time, &Font12, WHITE, BLACK);
+        snprintf(day_time, sizeof(day_time),
+                 "%02u.%02u %02u:%02u",
+                 g_timeData.day, g_timeData.month,
+                 g_timeData.hour, g_timeData.minute);
+        DrawRightAligned(CW - MARGIN_X, HEADER_Y + 2, day_time, &Font12, WHITE, BLACK);
+        time_w = TextWidth(&Font12, day_time);
     }
 
-    UWORD time_w = TextWidth(&Font12, day_time);
-    UWORD right_limit = 250 - 6 - time_w - 4;
+    UWORD right_limit = 250 - 6 - time_w;
 
     const char *title = "LocuSense";
     UWORD title_w = TextWidth(&Font16, title);
@@ -423,6 +444,12 @@ void GUI_Display(void)
  */
 void GUI_UpdateState(SystemState_t state)
 {
+    /* Skip if canvas not initialized (e.g., GUI_Init failed or was skipped). */
+    if (!BlackImage || Paint.Width == 0 || Paint.Height == 0) {
+        Debug("GUI_UpdateState skipped (canvas not ready)\r\n");
+        return;
+    }
+
     Paint_SelectImage(BlackImage);
 
     const char *stateStr = NULL;
@@ -463,6 +490,11 @@ void GUI_UpdateState(SystemState_t state)
  */
 void GUI_UpdateVOCIndex(uint16_t voc_index)
 {
+    if (!BlackImage || Paint.Width == 0 || Paint.Height == 0) {
+        Debug("GUI_UpdateVOCIndex skipped (canvas not ready)\r\n");
+        return;
+    }
+
     const UWORD CW = 250;
     const UWORD MARGIN_X   = 6;
     const UWORD GRID_Y0    = 28;
@@ -528,6 +560,11 @@ void GUI_UpdateVOCIndex(uint16_t voc_index)
  */
 void GUI_DrawCalibrationProgressFromStruct(void)
 {
+    if (!BlackImage || Paint.Width == 0 || Paint.Height == 0) {
+        Debug("GUI_DrawCalibrationProgress skipped (canvas not ready)\r\n");
+        return;
+    }
+
     Paint_SelectImage(BlackImage);
 
     Paint_DrawString_EN(10, 5, "CO2 Calibration", &Font16, WHITE, BLACK);
@@ -565,22 +602,6 @@ void EPDClear(void)
 {
     Paint_SelectImage(BlackImage);
     Paint_Clear(WHITE);
-}
-
-/**
- * @brief Draw icon (connected or not) without full screen redraw.
- *
- * Draws the LoRa/WAN connectivity icon at the top-left corner. Does not trigger
- * a display refresh by itself.
- */
-void GUI_DrawLoraIcon(uint8_t connected)
-{
-    UWORD iconX = 10;
-    UWORD iconY = 0;
-    if (connected)
-        Paint_DrawBitMap_Paste(gImage_CommOK, iconX, iconY, 20, 20, 0);
-    else
-        Paint_DrawBitMap_Paste(gImage_CommNo, iconX, iconY, 20, 20, 0);
 }
 
 /**
@@ -622,6 +643,11 @@ static const UWORD CONF_STATUS_Y1 = 118;
  */
 void GUI_ConfClearStatus(void)
 {
+    if (!BlackImage || Paint.Width == 0 || Paint.Height == 0) {
+        Debug("GUI_ConfClearStatus skipped (canvas not ready)\r\n");
+        return;
+    }
+
     Paint_SelectImage(BlackImage);
     EnsurePartialBase();
     Paint_ClearWindows(CONF_STATUS_X0, CONF_STATUS_Y0, CONF_STATUS_X1, CONF_STATUS_Y1, WHITE);
@@ -637,6 +663,10 @@ void GUI_ConfClearStatus(void)
 void GUI_ConfShowStatus(const char* msg)
 {
     if (!msg) return;
+    if (!BlackImage || Paint.Width == 0 || Paint.Height == 0) {
+        Debug("GUI_ConfShowStatus skipped (canvas not ready)\r\n");
+        return;
+    }
 
     Paint_SelectImage(BlackImage);
     EnsurePartialBase();
@@ -733,8 +763,8 @@ uint8_t GUI_DrawQR_TextFull(const char* text, const char* footer)
     if (!text || !text[0]) return 0;
 
     /* 1) Encode */
-    uint8_t qrcode[qrcodegen_BUFFER_LEN_MAX];
-    uint8_t temp  [qrcodegen_BUFFER_LEN_MAX];
+    static uint8_t qrcode[qrcodegen_BUFFER_LEN_MAX];
+    static uint8_t temp  [qrcodegen_BUFFER_LEN_MAX];
     if (!qrcodegen_encodeText(text, temp, qrcode,
                               qrcodegen_Ecc_MEDIUM,
                               qrcodegen_VERSION_MIN, qrcodegen_VERSION_MAX,
